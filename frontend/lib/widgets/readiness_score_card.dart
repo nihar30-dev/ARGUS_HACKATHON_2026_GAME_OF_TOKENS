@@ -24,69 +24,76 @@ class ReadinessScoreCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pct = (score * 100).toStringAsFixed(0);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Stack(
-          alignment: Alignment.center,
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: score),
+      duration: const Duration(milliseconds: 1200),
+      curve: Curves.easeOutCubic,
+      builder: (context, animatedValue, child) {
+        final pct = (animatedValue * 100).toStringAsFixed(0);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              width: size,
-              height: size,
-              child: CircularProgressIndicator(
-                value: score,
-                strokeWidth: size * 0.09,
-                backgroundColor: trackColor,
-                valueColor: AlwaysStoppedAnimation(color),
-                strokeCap: StrokeCap.round,
-              ),
-            ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
+            Stack(
+              alignment: Alignment.center,
               children: [
-                Text(
-                  '$pct%',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: size * 0.27,
-                    fontWeight: FontWeight.w800,
-                    height: 1.0,
-                    letterSpacing: -2,
+                SizedBox(
+                  width: size,
+                  height: size,
+                  child: CircularProgressIndicator(
+                    value: animatedValue,
+                    strokeWidth: size * 0.09,
+                    backgroundColor: trackColor,
+                    valueColor: AlwaysStoppedAnimation(color),
+                    strokeCap: StrokeCap.round,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'READINESS',
-                  style: TextStyle(
-                    color: color.withValues(alpha: 0.7),
-                    fontSize: size * 0.07,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
-                  ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$pct%',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: size * 0.27,
+                        fontWeight: FontWeight.w800,
+                        height: 1.0,
+                        letterSpacing: -2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'READINESS',
+                      style: TextStyle(
+                        color: color.withValues(alpha: 0.7),
+                        fontSize: size * 0.07,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
+            SizedBox(height: AppSpacing.smMd),
+            Text(
+              'Meeting Strategy Ready',
+              style: TextStyle(
+                color: color.withValues(alpha: 0.9),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'All agents completed',
+              style: TextStyle(
+                color: color.withValues(alpha: 0.6),
+                fontSize: 11,
+              ),
+            ),
           ],
-        ),
-        SizedBox(height: AppSpacing.smMd),
-        Text(
-          'Meeting Strategy Ready',
-          style: TextStyle(
-            color: color.withValues(alpha: 0.9),
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'All agents completed',
-          style: TextStyle(
-            color: color.withValues(alpha: 0.6),
-            fontSize: 11,
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

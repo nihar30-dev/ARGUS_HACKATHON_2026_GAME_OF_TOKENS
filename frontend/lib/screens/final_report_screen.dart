@@ -233,6 +233,29 @@ class _FinalReportScreenState extends State<FinalReportScreen> {
       );
     }
 
+    final cardsList = <Widget>[
+      if (report.executiveBrief != null)
+        _ExecutiveBriefCard(brief: report.executiveBrief!),
+      if (_phases.isNotEmpty)
+        _ConversationFlowCard(phases: _phases),
+      if (_questions.isNotEmpty)
+        _QuestionsCard(questions: _questions),
+      if (_objections.isNotEmpty)
+        _ObjectionsCard(
+          objections: _objections,
+          expanded: _expandedObjections,
+          onToggle: (i) => setState(() =>
+              _expandedObjections.contains(i)
+                  ? _expandedObjections.remove(i)
+                  : _expandedObjections.add(i)),
+        ),
+      if (_dos.isNotEmpty || _donts.isNotEmpty)
+        _DoAndDontCard(dos: _dos, donts: _donts),
+      if (_nextSteps.isNotEmpty)
+        _NextStepsCard(steps: _nextSteps),
+      _AgentFooter(session: widget.session),
+    ];
+
     return Scaffold(
       appBar: _buildAppBar(context),
       body: SingleChildScrollView(
@@ -247,38 +270,23 @@ class _FinalReportScreenState extends State<FinalReportScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (report.executiveBrief != null) ...[
-                      _ExecutiveBriefCard(brief: report.executiveBrief!),
-                      AppSpacing.gapLg,
-                    ],
-                    if (_phases.isNotEmpty) ...[
-                      _ConversationFlowCard(phases: _phases),
-                      AppSpacing.gapLg,
-                    ],
-                    if (_questions.isNotEmpty) ...[
-                      _QuestionsCard(questions: _questions),
-                      AppSpacing.gapLg,
-                    ],
-                    if (_objections.isNotEmpty) ...[
-                      _ObjectionsCard(
-                        objections: _objections,
-                        expanded: _expandedObjections,
-                        onToggle: (i) => setState(() =>
-                            _expandedObjections.contains(i)
-                                ? _expandedObjections.remove(i)
-                                : _expandedObjections.add(i)),
+                    for (var i = 0; i < cardsList.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween<double>(begin: 0.0, end: 1.0),
+                          duration: Duration(milliseconds: 400 + (i * 120)),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, val, child) => Opacity(
+                            opacity: val,
+                            child: Transform.translate(
+                              offset: Offset(0, 15 * (1 - val)),
+                              child: child,
+                            ),
+                          ),
+                          child: cardsList[i],
+                        ),
                       ),
-                      AppSpacing.gapLg,
-                    ],
-                    if (_dos.isNotEmpty || _donts.isNotEmpty) ...[
-                      _DoAndDontCard(dos: _dos, donts: _donts),
-                      AppSpacing.gapLg,
-                    ],
-                    if (_nextSteps.isNotEmpty) ...[
-                      _NextStepsCard(steps: _nextSteps),
-                      AppSpacing.gapLg,
-                    ],
-                    _AgentFooter(session: widget.session),
                     AppSpacing.gapXl,
                   ],
                 ),

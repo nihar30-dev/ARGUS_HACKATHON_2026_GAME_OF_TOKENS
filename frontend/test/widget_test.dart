@@ -12,7 +12,7 @@ void main() {
 
     // Verify that our app renders the expected title and elements.
     expect(find.text('MeetWise'), findsWidgets);
-    expect(find.text('Generate Meeting Intelligence'), findsWidgets);
+    expect(find.text('New Meeting Intelligence'), findsWidgets);
 
     // Restore original builder to satisfy flutter test framework
     ErrorWidget.builder = originalErrorBuilder;

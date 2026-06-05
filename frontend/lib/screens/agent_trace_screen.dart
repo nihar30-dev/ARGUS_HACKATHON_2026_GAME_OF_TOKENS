@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../app/routes.dart';
 import '../core/responsive.dart';
 import '../models/agent_trace_model.dart';
 import '../models/session_response.dart';
+import '../services/meeting_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme.dart';
@@ -13,9 +16,9 @@ import '../widgets/agent_card.dart';
 import '../widgets/error_view.dart';
 import '../widgets/trace_workflow_widget.dart';
 
-// ── Agent metadata ────────────────────────────────────────────────────────────
+// ── Agent Metadata & Short names ──────────────────────────────────────────────
 
-const Map<String, String> _kShort = {
+const Map<String, String> _kShortNames = {
   'OrganizationResearchAgent': 'Research',
   'StakeholderPersonaAgent': 'Persona',
   'EngagementStrategyAgent': 'Strategy',
@@ -24,86 +27,32 @@ const Map<String, String> _kShort = {
   'FinalSynthesisAgent': 'Synthesis',
 };
 
-class _HighlightDef {
-  final IconData icon;
-  final Color fg;
-  final Color bg;
-  final String title;
-  final String body;
+const List<String> _kAgentNames = [
+  'OrganizationResearchAgent',
+  'StakeholderPersonaAgent',
+  'EngagementStrategyAgent',
+  'ObjectionPredictionAgent',
+  'CriticValidatorAgent',
+  'FinalSynthesisAgent',
+];
 
-  const _HighlightDef({
-    required this.icon,
-    required this.fg,
-    required this.bg,
-    required this.title,
-    required this.body,
-  });
-}
+const List<String> _kDisplayNames = [
+  'Organization Research Agent',
+  'Stakeholder Persona Agent',
+  'Engagement Strategy Agent',
+  'Objection Prediction Agent',
+  'Critic Validator Agent',
+  'Final Synthesis Agent',
+];
 
-const Map<String, _HighlightDef> _kHighlights = {
-  'ObjectionPredictionAgent': _HighlightDef(
-    icon: Icons.warning_amber_rounded,
-    fg: AppColors.warning,
-    bg: AppColors.warningLight,
-    title: 'Challenges Strategy Agent',
-    body:
-        'Every objection is anchored in the engagement framing from EngagementStrategy. The "unification layer, not replacement" positioning is what surfaced the interoperability challenge.',
-  ),
-  'CriticValidatorAgent': _HighlightDef(
-    icon: Icons.fact_check_rounded,
-    fg: AppColors.danger,
-    bg: AppColors.dangerLight,
-    title: 'Validates Weaknesses Across All Agents',
-    body:
-        'Reviewed all 4 prior outputs. Flagged 1 HIGH-risk unsupported claim in ObjectionPrediction: "100% interoperability" cannot be substantiated for the specific EMR vendors identified by OrgResearch.',
-  ),
-  'FinalSynthesisAgent': _HighlightDef(
-    icon: Icons.auto_awesome_rounded,
-    fg: AppColors.success,
-    bg: AppColors.successLight,
-    title: 'Synthesizes Refined Output',
-    body:
-        'Incorporated all 5 prior agents. Applied CriticValidator revision: replaced "100% interoperability" with per-vendor connector status — TASY (production-ready) and McKesson Paragon (beta, 30-day GA).',
-  ),
-};
-
-class _ConnectorDef {
-  final Color line;
-  final Color bg;
-  final Color fg;
-  final IconData icon;
-  final String label;
-  final String desc;
-
-  const _ConnectorDef({
-    required this.line,
-    required this.bg,
-    required this.fg,
-    required this.icon,
-    required this.label,
-    required this.desc,
-  });
-}
-
-// Special connectors that appear ABOVE the target agent card
-const Map<String, _ConnectorDef> _kConnectors = {
-  'CriticValidatorAgent': _ConnectorDef(
-    line: AppColors.warning,
-    bg: AppColors.warningLight,
-    fg: AppColors.warning,
-    icon: Icons.fact_check_rounded,
-    label: 'Critic reviews Objection claims',
-    desc: 'CriticValidator examines all prior outputs including ObjectionPrediction\'s responses.',
-  ),
-  'FinalSynthesisAgent': _ConnectorDef(
-    line: AppColors.success,
-    bg: AppColors.successLight,
-    fg: AppColors.success,
-    icon: Icons.auto_awesome_rounded,
-    label: '1 HIGH-risk finding → Final revises',
-    desc: 'CriticValidator\'s flag is directly incorporated — this is the key interdependency.',
-  ),
-};
+const List<IconData> _kIcons = [
+  Icons.search_outlined,
+  Icons.person_outlined,
+  Icons.lightbulb_outline,
+  Icons.warning_amber_outlined,
+  Icons.fact_check_outlined,
+  Icons.summarize_outlined,
+];
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -117,22 +66,69 @@ class AgentTraceScreen extends StatefulWidget {
 }
 
 class _AgentTraceScreenState extends State<AgentTraceScreen> {
+  late SessionResponse _session;
+  late List<AgentTraceModel> _models;
+  Timer? _pollTimer;
+
   final Set<String> _expanded = {};
   final Set<String> _showInput = {};
   final Set<String> _showOutput = {};
   String? _selectedAgent;
-
-  late final List<AgentTraceModel> _models;
+  String? _pollError;
 
   @override
   void initState() {
     super.initState();
-    _models = AgentTraceModel.fromSession(widget.session);
-    // Auto-expand Critic and Final for the demo story
-    if (_models.isNotEmpty) {
+    _session = widget.session;
+    _models = AgentTraceModel.fromSession(_session);
+
+    // Auto-expand interesting agents for the demo story if completed
+    _autoExpandKeys();
+
+    // Start polling the server if the session is currently running
+    if (_session.status == 'RUNNING') {
+      _startPolling();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  void _autoExpandKeys() {
+    if (_session.status == 'COMPLETED') {
       _expanded.add('CriticValidatorAgent');
       _expanded.add('FinalSynthesisAgent');
     }
+  }
+
+  void _startPolling() {
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      try {
+        final repo = context.read<MeetingRepository>();
+        final updated = await repo.getMeeting(_session.sessionId);
+        
+        if (!mounted) return;
+        setState(() {
+          _session = updated;
+          _models = AgentTraceModel.fromSession(_session);
+          _pollError = null;
+
+          if (_session.status == 'COMPLETED') {
+            _pollTimer?.cancel();
+            _autoExpandKeys();
+          }
+        });
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _pollError = 'Connection lost. Retrying...';
+          });
+        }
+      }
+    });
   }
 
   void _toggleExpand(String name) =>
@@ -158,30 +154,25 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
   void _onPipelineTap(String agentName) {
     setState(() {
       _selectedAgent = _selectedAgent == agentName ? null : agentName;
-      // Also expand the tapped card
       _expanded.add(agentName);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // Empty-state guard — show before any pipeline UI to avoid blank screen.
-    if (_models.isEmpty) {
+
+    // Empty state fallback (no agents run and status is not running)
+    if (_models.isEmpty && _session.status != 'RUNNING') {
       return Scaffold(
         appBar: _buildAppBar(),
         body: ErrorView(
           compact: false,
           isError: false,
           icon: Icons.account_tree_outlined,
-          title: 'No Agent Data',
-          message:
-              'This session has no agent run records. '
-              'The pipeline may not have completed or data may be unavailable.',
+          title: 'No Pipeline Traces',
+          message: 'No execution trace logs exist for this meeting brief.',
           onRetry: () => Navigator.pop(context),
           retryLabel: 'Go Back',
-          onSecondary: () => Navigator.pushNamedAndRemoveUntil(
-              context, Routes.home, (_) => false),
-          secondaryLabel: 'Go to Home',
         ),
       );
     }
@@ -190,8 +181,19 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
       appBar: _buildAppBar(),
       body: Column(
         children: [
+          if (_pollError != null)
+            Container(
+              color: AppColors.danger,
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: AppSpacing.md),
+              alignment: Alignment.center,
+              child: Text(
+                _pollError!,
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
           _HeaderBar(
-            session: widget.session,
+            session: _session,
             models: _models,
             onExpandAll: _expandAll,
             onCollapseAll: _collapseAll,
@@ -206,42 +208,27 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Pipeline overview strip — tap a node to expand its card
+                      // Active visual pipeline indicator
                       Container(
                         decoration: AppTheme.cardDecoration,
                         child: TraceWorkflowWidget(
-                          runs: widget.session.agentRuns,
-                          activeAgentName: _selectedAgent,
+                          runs: _session.agentRuns,
+                          activeAgentName: _selectedAgent ?? 
+                              (_session.status == 'RUNNING' && _models.isNotEmpty 
+                                  ? _models.last.agentName 
+                                  : null),
                           onAgentTap: _onPipelineTap,
                           direction: Axis.horizontal,
                           compact: true,
                         ),
                       ),
                       AppSpacing.gapLg,
-                      for (var i = 0; i < _models.length; i++) ...[
-                        if (i > 0)
-                          _TraceConnector(
-                            fromName: _models[i - 1].agentName,
-                            toName: _models[i].agentName,
-                            traces: widget.session.traces,
-                          ),
-                        _AgentCard(
-                          model: _models[i],
-                          allTraces: widget.session.traces,
-                          expanded: _expanded.contains(_models[i].agentName),
-                          showInput: _showInput.contains(_models[i].agentName),
-                          showOutput:
-                              _showOutput.contains(_models[i].agentName),
-                          onToggleExpand: () =>
-                              _toggleExpand(_models[i].agentName),
-                          onToggleInput: () =>
-                              _toggleInput(_models[i].agentName),
-                          onToggleOutput: () =>
-                              _toggleOutput(_models[i].agentName),
-                        ),
-                      ],
+                      
+                      // Live dynamic timeline list
+                      _buildTimeline(),
+                      
                       AppSpacing.gapXl,
-                      _ViewReportButton(session: widget.session),
+                      _ViewReportButton(session: _session),
                       AppSpacing.gapXl,
                     ],
                   ),
@@ -255,18 +242,100 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
   }
 
   PreferredSizeWidget _buildAppBar() => AppBar(
-        title: Text('Agent Trace — ${widget.session.organizationName}'),
+        title: Text('Agent Execution Trace — ${_session.organizationName}'),
         actions: [
-          TextButton.icon(
-            onPressed: () => Navigator.pushNamed(
-                context, Routes.report,
-                arguments: widget.session),
-            icon: const Icon(Icons.article_outlined, size: 16),
-            label: const Text('Final Report'),
-          ),
+          if (_session.status == 'COMPLETED')
+            TextButton.icon(
+              onPressed: () => Navigator.pushNamed(
+                  context, Routes.report,
+                  arguments: _session),
+              icon: const Icon(Icons.article_outlined, size: 16),
+              label: const Text('Final Report'),
+            ),
           const SizedBox(width: AppSpacing.sm),
         ],
       );
+
+  Widget _buildTimeline() {
+    return Column(
+      children: List.generate(6, (index) {
+        final agentName = _kAgentNames[index];
+        final isCompleted = index < _models.length;
+        final isActive = index == _models.length && _session.status == 'RUNNING';
+
+        if (isCompleted) {
+          final model = _models[index];
+          return Column(
+            children: [
+              if (index > 0)
+                _TraceConnector(
+                  fromName: _kAgentNames[index - 1],
+                  toName: agentName,
+                  traces: _session.traces,
+                  completed: true,
+                ),
+              TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 350),
+                builder: (context, value, child) => Opacity(
+                  opacity: value,
+                  child: Transform.translate(
+                    offset: Offset(0, 15 * (1 - value)),
+                    child: child,
+                  ),
+                ),
+                child: _AgentCard(
+                  model: model,
+                  allTraces: _session.traces,
+                  expanded: _expanded.contains(agentName),
+                  showInput: _showInput.contains(agentName),
+                  showOutput: _showOutput.contains(agentName),
+                  onToggleExpand: () => _toggleExpand(agentName),
+                  onToggleInput: () => _toggleInput(agentName),
+                  onToggleOutput: () => _toggleOutput(agentName),
+                ),
+              ),
+            ],
+          );
+        } else if (isActive) {
+          return Column(
+            children: [
+              _TraceConnector(
+                fromName: _kAgentNames[index - 1],
+                toName: agentName,
+                traces: const [],
+                completed: false,
+                active: true,
+              ),
+              _RunningAgentCard(
+                name: _kDisplayNames[index],
+                order: index + 1,
+                icon: _kIcons[index],
+                isGemini: index != 1 && index != 4,
+              ),
+            ],
+          );
+        } else {
+          return Column(
+            children: [
+              _TraceConnector(
+                fromName: _kAgentNames[index - 1],
+                toName: agentName,
+                traces: const [],
+                completed: false,
+              ),
+              _UpcomingAgentCard(
+                name: _kDisplayNames[index],
+                order: index + 1,
+                icon: _kIcons[index],
+                isGemini: index != 1 && index != 4,
+              ),
+            ],
+          );
+        }
+      }),
+    );
+  }
 }
 
 // ── Header bar ────────────────────────────────────────────────────────────────
@@ -287,23 +356,21 @@ class _HeaderBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = Responsive.isMobile(context);
-    final geminiCount = models.where((m) => m.usedGemini).length;
-    final ruleCount = models.length - geminiCount;
     final avgConf = models.isEmpty
         ? 0.0
         : models.map((m) => m.confidenceScore).reduce((a, b) => a + b) /
             models.length;
 
     final chips = <Widget>[
-      _Chip('${models.length} Agents', AppColors.brandSubtle, AppColors.brand),
-      _Chip('${session.traces.length} Traces', AppColors.accentSubtle, AppColors.accent),
-      _Chip('$geminiCount Gemini', AppColors.geminiSurface, AppColors.gemini),
-      _Chip('$ruleCount Rules', AppColors.ruleBasedSurface, AppColors.ruleBased),
-      _Chip(
-        '${(avgConf * 100).toStringAsFixed(0)}% avg',
-        AppColors.forConfidenceSurface(avgConf),
-        AppColors.forConfidence(avgConf),
-      ),
+      _Chip(session.status, session.status == 'COMPLETED' ? AppColors.successLight : AppColors.warningLight, session.status == 'COMPLETED' ? AppColors.success : AppColors.warning),
+      _Chip('${models.length} / 6 Run', AppColors.brandSubtle, AppColors.brand),
+      _Chip('${session.traces.length} Influence Traces', AppColors.accentSubtle, AppColors.accent),
+      if (models.isNotEmpty)
+        _Chip(
+          'Avg Conf: ${(avgConf * 100).toStringAsFixed(0)}%',
+          AppColors.forConfidenceSurface(avgConf),
+          AppColors.forConfidence(avgConf),
+        ),
     ];
 
     return Container(
@@ -329,18 +396,12 @@ class _HeaderBar extends StatelessWidget {
                   icon: const Icon(Icons.unfold_more_rounded,
                       size: 18, color: AppColors.textMuted),
                   tooltip: 'Expand all',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 ),
                 IconButton(
                   onPressed: onCollapseAll,
                   icon: const Icon(Icons.unfold_less_rounded,
                       size: 18, color: AppColors.textMuted),
                   tooltip: 'Collapse all',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 ),
               ],
             )
@@ -348,14 +409,15 @@ class _HeaderBar extends StatelessWidget {
               children: [
                 ...chips.expand((c) => [c, AppSpacing.hGapSm]),
                 const Spacer(),
-                TextButton(
+                TextButton.icon(
                     onPressed: onExpandAll,
-                    child: const Text('Expand all',
-                        style: TextStyle(fontSize: 12))),
-                TextButton(
+                    icon: const Icon(Icons.unfold_more_rounded, size: 14),
+                    label: const Text('Expand All', style: TextStyle(fontSize: 12))),
+                AppSpacing.hGapSm,
+                TextButton.icon(
                     onPressed: onCollapseAll,
-                    child: const Text('Collapse all',
-                        style: TextStyle(fontSize: 12))),
+                    icon: const Icon(Icons.unfold_less_rounded, size: 14),
+                    label: const Text('Collapse All', style: TextStyle(fontSize: 12))),
               ],
             ),
     );
@@ -380,118 +442,186 @@ class _Chip extends StatelessWidget {
       );
 }
 
-// ── Trace connector (visual arrow between cards) ───────────────────────────────
+// ── Trace Connector ───────────────────────────────────────────────────────────
 
 class _TraceConnector extends StatelessWidget {
   final String fromName;
   final String toName;
   final List<AgentTrace> traces;
+  final bool completed;
+  final bool active;
 
   const _TraceConnector({
     required this.fromName,
     required this.toName,
     required this.traces,
+    required this.completed,
+    this.active = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final def = _kConnectors[toName];
-    final lineColor = def?.line ?? AppColors.outline;
+    Color lineColor = AppColors.outline;
+    if (completed) {
+      if (toName == 'CriticValidatorAgent') {
+        lineColor = AppColors.warning;
+      } else if (toName == 'FinalSynthesisAgent') {
+        lineColor = AppColors.success;
+      } else {
+        lineColor = AppColors.brand;
+      }
+    } else if (active) {
+      lineColor = AppColors.accent;
+    }
 
     return Column(
       children: [
-        // Top stem
+        // Top stem connector
         Center(
           child: Container(
-              width: 2,
-              height: 16,
-              color: lineColor),
+            width: 2.5,
+            height: 16,
+            color: lineColor,
+          ),
         ),
-        // Special highlight connector
-        if (def != null) ...[
+        
+        // Dynamic callout for key agent-to-agent interactions
+        if (completed && toName == 'CriticValidatorAgent')
+          _buildHighlightBox(
+            icon: Icons.fact_check_rounded,
+            color: AppColors.danger,
+            bg: AppColors.dangerLight,
+            title: 'Critic Validation Layer',
+            desc: 'CriticValidatorAgent reads the predicted objections and strategy files to audit statements against validated references.',
+          )
+        else if (completed && toName == 'FinalSynthesisAgent')
+          _buildHighlightBox(
+            icon: Icons.auto_awesome_rounded,
+            color: AppColors.success,
+            bg: AppColors.successLight,
+            title: 'Audit Trigger: Revision Applied',
+            desc: 'CriticValidator flagged an integration claim. FinalSynthesisAgent rewrites the McKesson vendor reference before client delivery.',
+          )
+        else if (completed && toName == 'ObjectionPredictionAgent')
+          _buildHighlightBox(
+            icon: Icons.psychology_outlined,
+            color: AppColors.warning,
+            bg: AppColors.warningLight,
+            title: 'Objection Framing',
+            desc: 'ObjectionPredictionAgent challenges the Engagement Strategy by predicting stakeholder pushback on system interoperability.',
+          )
+        else if (completed && traces.isNotEmpty)
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-            padding: AppSpacing.cardPadding,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 2),
             decoration: BoxDecoration(
-              color: def.bg,
-              borderRadius: AppSpacing.roundedMd,
-              border: Border.all(color: def.fg.withValues(alpha: 0.3)),
+              color: AppColors.surfacePage,
+              borderRadius: AppSpacing.roundedPill,
+              border: Border.all(color: AppColors.outline),
             ),
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(def.icon, color: def.fg, size: 18),
-                AppSpacing.hGapSm,
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        def.label,
-                        style: TextStyle(
-                            color: def.fg,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        def.desc,
-                        style: TextStyle(
-                            color: def.fg.withValues(alpha: 0.8),
-                            fontSize: 12,
-                            height: 1.4),
-                      ),
-                    ],
+                const Icon(Icons.arrow_downward, size: 10, color: AppColors.textMuted),
+                const SizedBox(width: AppSpacing.xxs),
+                Text(
+                  '${traces.where((t) => t.targetAgent == toName).length} Inbound Link(s)',
+                  style: const TextStyle(
+                      fontSize: 10,
+                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: lineColor,
+            ),
+          ),
+
+        // Bottom stem connector
+        Center(
+          child: Container(
+            width: 2.5,
+            height: 16,
+            color: lineColor,
+          ),
+        ),
+        Center(
+          child: Icon(
+            Icons.arrow_downward_rounded,
+            size: 16,
+            color: lineColor,
+          ),
+        ),
+        const SizedBox(height: 6),
+      ],
+    );
+  }
+
+  Widget _buildHighlightBox({
+    required IconData icon,
+    required Color color,
+    required Color bg,
+    required String title,
+    required String desc,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+      padding: AppSpacing.cardPadding,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: AppSpacing.roundedMd,
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          AppSpacing.hGapSm,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    color: color.withValues(alpha: 0.95),
+                    fontSize: 11.5,
+                    height: 1.4,
                   ),
                 ),
               ],
             ),
           ),
-        ] else ...[
-          // Simple trace count pill
-          Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm, vertical: AppSpacing.xxs),
-            decoration: const BoxDecoration(
-              color: AppColors.surfacePage,
-              borderRadius: AppSpacing.roundedPill,
-              border: Border.fromBorderSide(
-                  BorderSide(color: AppColors.outline)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.arrow_downward,
-                    size: 10, color: AppColors.textMuted),
-                const SizedBox(width: AppSpacing.xxs),
-                Text(
-                  '${traces.where((t) => t.targetAgent == toName).length} influence links',
-                  style: const TextStyle(
-                      fontSize: 10,
-                      color: AppColors.textMuted,
-                      fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
-          ),
         ],
-        // Bottom stem
-        Center(
-          child: Container(
-              width: 2,
-              height: 16,
-              color: lineColor),
-        ),
-        Center(
-          child: Icon(Icons.arrow_downward_rounded,
-              size: 16, color: lineColor),
-        ),
-        const SizedBox(height: 4),
-      ],
+      ),
     );
   }
 }
 
-// ── Agent card ────────────────────────────────────────────────────────────────
+// ── Agent Card ────────────────────────────────────────────────────────────────
 
 class _AgentCard extends StatelessWidget {
   final AgentTraceModel model;
@@ -526,34 +656,36 @@ class _AgentCard extends StatelessWidget {
     final borderColor = expanded
         ? (isGemini ? AppColors.brand : AppColors.ruleBased)
         : AppColors.outline;
-    final highlight = _kHighlights[model.agentName];
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+    return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceCard,
         borderRadius: AppSpacing.roundedLg,
         border: Border.all(
-            color: borderColor,
-            width: expanded ? 2 : 1),
+          color: borderColor,
+          width: expanded ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: expanded ? 0.06 : 0.02),
+            blurRadius: expanded ? 10 : 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Header (always visible) ─────────────────────────────────────
+          // Header section
           InkWell(
             onTap: onToggleExpand,
             child: Padding(
               padding: AppSpacing.cardPadding,
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Order bubble
-                  _OrderBubble(
-                      order: model.order, isGemini: isGemini),
+                  _OrderBubble(order: model.order, isGemini: isGemini),
                   AppSpacing.hGapMd,
-                  // Name + type
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -562,49 +694,30 @@ class _AgentCard extends StatelessWidget {
                           model.displayName,
                           style: const TextStyle(
                               fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary),
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                              letterSpacing: -0.2),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 3),
                         Row(
                           children: [
                             AgentTypeBadge(isGemini: isGemini),
                             AppSpacing.hGapSm,
                             Text(
-                              '${model.executionMs}ms',
+                              '${(model.executionMs / 1000).toStringAsFixed(1)}s runtime',
                               style: const TextStyle(
                                   fontSize: 11,
-                                  color: AppColors.textMuted),
+                                  color: AppColors.textSecondary),
                             ),
                           ],
                         ),
                       ],
                     ),
                   ),
-                  // Confidence
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '${(model.confidenceScore * 100).toStringAsFixed(0)}%',
-                        style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.forConfidence(
-                                model.confidenceScore)),
-                      ),
-                      Text(
-                        'confidence',
-                        style: const TextStyle(
-                            fontSize: 10, color: AppColors.textMuted),
-                      ),
-                    ],
-                  ),
+                  _buildAnimatedScoreGauge(model.confidenceScore),
                   AppSpacing.hGapSm,
                   Icon(
-                    expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
+                    expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
                     color: AppColors.textMuted,
                   ),
                 ],
@@ -612,54 +725,44 @@ class _AgentCard extends StatelessWidget {
             ),
           ),
 
-          // ── Confidence bar (always visible) ────────────────────────────
+          // Confidence indicator linear progress
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md, 0, AppSpacing.md, AppSpacing.smMd),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.smMd),
             child: ClipRRect(
               borderRadius: AppSpacing.roundedPill,
               child: LinearProgressIndicator(
                 value: model.confidenceScore,
                 minHeight: 5,
-                backgroundColor: AppColors.forConfidenceSubtle(
-                    model.confidenceScore),
-                valueColor: AlwaysStoppedAnimation(
-                    AppColors.forConfidence(model.confidenceScore)),
+                backgroundColor: AppColors.outline,
+                valueColor: AlwaysStoppedAnimation(AppColors.forConfidence(model.confidenceScore)),
               ),
             ),
           ),
 
-          // ── Influence chip row (always visible) ─────────────────────────
+          // Interdependency Chips
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md, 0, AppSpacing.md, AppSpacing.smMd),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.smMd),
             child: Wrap(
               spacing: AppSpacing.xs,
               runSpacing: AppSpacing.xs,
               children: [
                 if (model.influencedBy.isEmpty)
                   _MiniChip(
-                    label: '← No inputs',
+                    label: 'Pipeline Entrypoint',
                     bg: AppColors.surfacePage,
                     fg: AppColors.textMuted,
                   )
                 else
                   for (final src in model.influencedBy)
                     _MiniChip(
-                      label: '← ${_kShort[src] ?? src}',
-                      bg: AppColors.brandSubtle,
+                      label: 'Reads ${_kShortNames[src] ?? src}',
+                      bg: AppColors.brandLight,
                       fg: AppColors.brand,
                     ),
-                if (model.influencesNext.isEmpty)
-                  _MiniChip(
-                    label: '→ No outputs',
-                    bg: AppColors.surfacePage,
-                    fg: AppColors.textMuted,
-                  )
-                else
+                if (model.influencesNext.isNotEmpty)
                   for (final tgt in model.influencesNext)
                     _MiniChip(
-                      label: '→ ${_kShort[tgt] ?? tgt}',
+                      label: 'Feeds ${_kShortNames[tgt] ?? tgt}',
                       bg: AppColors.accentSubtle,
                       fg: AppColors.accent,
                     ),
@@ -667,54 +770,62 @@ class _AgentCard extends StatelessWidget {
             ),
           ),
 
-          // ── Expanded content ────────────────────────────────────────────
+          // Extended Trace details
           if (expanded) ...[
-            const Divider(height: 1),
-
-            // Highlight banner for key agents
-            if (highlight != null)
-              _HighlightBanner(def: highlight),
+            const Divider(),
+            
+            // Custom callouts inside card for demo highlights
+            if (model.agentName == 'ObjectionPredictionAgent')
+              _buildCallout(
+                title: 'AGENT CHALLENGE ANALYSIS',
+                text: 'Critic validator matched objections back to the EMR vendor platform mapping. Interoperability objections were flagged as the primary friction point.',
+                color: AppColors.warning,
+                bg: AppColors.warningLight,
+              ),
+            if (model.agentName == 'CriticValidatorAgent')
+              _buildCallout(
+                title: 'CRITIC AUDIT LOG',
+                text: 'FLAGGED CLAIM: "MEDplat is fully compatible with McKesson EMR". CORRECTION: McKesson API support is in beta. Replaced with conditional EMR vendor tiering.',
+                color: AppColors.danger,
+                bg: AppColors.dangerLight,
+              ),
+            if (model.agentName == 'FinalSynthesisAgent')
+              _buildCallout(
+                title: 'SYNTHESIS VERIFICATION',
+                text: 'Applied CriticValidator modification directly to Next Steps and Conversation Playbook. Final readiness score finalized at 88%.',
+                color: AppColors.success,
+                bg: AppColors.successLight,
+              ),
 
             Padding(
               padding: AppSpacing.cardPadding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // INBOUND TRACES
                   if (_inbound.isNotEmpty) ...[
                     _SectionLabel(
-                      icon: Icons.arrow_downward_rounded,
-                      label: 'INFLUENCED BY',
+                      icon: Icons.subdirectory_arrow_right,
+                      label: 'INBOUND COLLABORATIONS',
                       color: AppColors.brand,
                     ),
                     AppSpacing.gapSm,
-                    ..._inbound.map((t) => _TraceRow(
-                          trace: t,
-                          isInbound: true,
-                        )),
+                    ..._inbound.map((t) => _TraceRow(trace: t, isInbound: true)),
                     AppSpacing.gapMd,
                   ],
-
-                  // OUTBOUND TRACES
                   if (_outbound.isNotEmpty) ...[
                     _SectionLabel(
-                      icon: Icons.arrow_upward_rounded,
-                      label: 'INFLUENCES NEXT',
+                      icon: Icons.subdirectory_arrow_left,
+                      label: 'OUTBOUND DEPENDENCIES',
                       color: AppColors.accent,
                     ),
                     AppSpacing.gapSm,
-                    ..._outbound.map((t) => _TraceRow(
-                          trace: t,
-                          isInbound: false,
-                        )),
+                    ..._outbound.map((t) => _TraceRow(trace: t, isInbound: false)),
                     AppSpacing.gapMd,
                   ],
-
-                  // TRACE SUMMARY
                   if (model.traceSummary != null) ...[
                     _SectionLabel(
                       icon: Icons.summarize_outlined,
-                      label: 'TRACE SUMMARY',
+                      label: 'INFLUENCE LOG SUMMARY',
                       color: AppColors.textSecondary,
                     ),
                     AppSpacing.gapSm,
@@ -727,24 +838,22 @@ class _AgentCard extends StatelessWidget {
                         style: const TextStyle(
                             fontSize: 13,
                             color: AppColors.textSecondary,
-                            height: 1.5),
+                            height: 1.55),
                       ),
                     ),
                     AppSpacing.gapMd,
                   ],
-
-                  // INPUT JSON
+                  
+                  // JSON toggles
                   if (model.inputReceived != null)
                     _JsonSection(
-                      label: 'INPUT RECEIVED',
+                      label: 'INPUT PAYLOAD JSON',
                       json: model.inputReceived!,
                       visible: showInput,
                       onToggle: onToggleInput,
                     ),
-
-                  // OUTPUT JSON
                   _JsonSection(
-                    label: 'OUTPUT GENERATED',
+                    label: 'OUTPUT RESPONSE JSON',
                     json: model.outputGenerated ?? '{}',
                     visible: showOutput,
                     onToggle: onToggleOutput,
@@ -758,9 +867,259 @@ class _AgentCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildAnimatedScoreGauge(double score) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: score),
+      duration: const Duration(milliseconds: 600),
+      builder: (context, val, _) {
+        final color = AppColors.forConfidence(val);
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '${(val * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const Text(
+                  'CONFIDENCE',
+                  style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: AppColors.textMuted),
+                ),
+              ],
+            ),
+            AppSpacing.hGapSm,
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                value: val,
+                color: color,
+                backgroundColor: AppColors.forConfidenceSubtle(val),
+                strokeWidth: 3,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCallout({
+    required String title,
+    required String text,
+    required Color color,
+    required Color bg,
+  }) {
+    return Container(
+      padding: AppSpacing.cardPadding,
+      color: bg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, size: 14, color: color),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color, letterSpacing: 0.5),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            text,
+            style: TextStyle(fontSize: 12, color: color.withValues(alpha: 0.9), height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-// ── View Report button ────────────────────────────────────────────────────────
+// ── Active running card ───────────────────────────────────────────────────────
+
+class _RunningAgentCard extends StatefulWidget {
+  final String name;
+  final int order;
+  final IconData icon;
+  final bool isGemini;
+
+  const _RunningAgentCard({
+    required this.name,
+    required this.order,
+    required this.icon,
+    required this.isGemini,
+  });
+
+  @override
+  State<_RunningAgentCard> createState() => _RunningAgentCardState();
+}
+
+class _RunningAgentCardState extends State<_RunningAgentCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = widget.isGemini ? AppColors.gemini : AppColors.ruleBased;
+    final bg = widget.isGemini ? AppColors.geminiSurface : AppColors.ruleBasedSurface;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceCard,
+            borderRadius: AppSpacing.roundedLg,
+            border: Border.all(
+              color: fg.withValues(alpha: 0.3 + (0.7 * _controller.value)),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: fg.withValues(alpha: 0.05 * _controller.value),
+                blurRadius: 8,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          padding: AppSpacing.cardPaddingLg,
+          child: child,
+        );
+      },
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: bg,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(widget.icon, color: fg, size: 16),
+          ),
+          AppSpacing.hGapMd,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.name,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    AgentTypeBadge(isGemini: widget.isGemini),
+                    AppSpacing.hGapSm,
+                    const Text(
+                      'Running multi-agent orchestration...',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Upcoming deactivated card ──────────────────────────────────────────────────
+
+class _UpcomingAgentCard extends StatelessWidget {
+  final String name;
+  final int order;
+  final IconData icon;
+  final bool isGemini;
+
+  const _UpcomingAgentCard({
+    required this.name,
+    required this.order,
+    required this.icon,
+    required this.isGemini,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0.45,
+      child: Container(
+        decoration: AppTheme.cardDecoration,
+        padding: AppSpacing.cardPadding,
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: const BoxDecoration(
+                color: AppColors.outline,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: AppColors.textMuted, size: 15),
+            ),
+            AppSpacing.hGapMd,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13.5,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Waiting on preceding agents output...',
+                    style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.lock_outline, size: 14, color: AppColors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── View Report Button ────────────────────────────────────────────────────────
 
 class _ViewReportButton extends StatelessWidget {
   final SessionResponse session;
@@ -776,25 +1135,26 @@ class _ViewReportButton extends StatelessWidget {
       padding: AppSpacing.cardPaddingLg,
       child: Column(
         children: [
-          const Icon(Icons.article_rounded, color: Colors.white, size: 32),
+          const Icon(Icons.verified_user_rounded, color: Colors.white, size: 36),
           AppSpacing.gapSm,
           const Text(
-            'Meeting Strategy Ready',
+            'Meeting Strategy Brief Completed',
             style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,
-                fontWeight: FontWeight.w800),
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5),
           ),
           AppSpacing.gapXs,
           Text(
-            'All 6 agents completed · ${session.traces.length} influence links recorded · CriticValidator revision applied',
+            'Pipeline audited and validated by CriticValidatorAgent · Final report ready for review',
             textAlign: TextAlign.center,
             style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.85),
+                color: Colors.white.withValues(alpha: 0.9),
                 fontSize: 13,
-                height: 1.4),
+                height: 1.45),
           ),
-          AppSpacing.gapMd,
+          AppSpacing.gapLg,
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
@@ -802,14 +1162,14 @@ class _ViewReportButton extends StatelessWidget {
                   context, Routes.report,
                   arguments: session),
               icon: const Icon(Icons.article_outlined, size: 18),
-              label: const Text('View Final Meeting Report'),
+              label: const Text('Access Executive Briefing'),
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: AppColors.brand,
                 padding: const EdgeInsets.symmetric(
                     vertical: AppSpacing.smMd),
                 textStyle: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w700),
+                    fontSize: 14, fontWeight: FontWeight.w800),
               ),
             ),
           ),
@@ -819,7 +1179,7 @@ class _ViewReportButton extends StatelessWidget {
   }
 }
 
-// ── Sub-widgets ───────────────────────────────────────────────────────────────
+// ── Small Reusable Helpers ───────────────────────────────────────────────────
 
 class _OrderBubble extends StatelessWidget {
   final int order;
@@ -832,23 +1192,22 @@ class _OrderBubble extends StatelessWidget {
     final fg = isGemini ? AppColors.gemini : AppColors.ruleBased;
     final bg = isGemini ? AppColors.geminiSurface : AppColors.ruleBasedSurface;
     return Container(
-      width: 36,
-      height: 36,
+      width: 28,
+      height: 28,
       decoration: BoxDecoration(
         color: bg,
         shape: BoxShape.circle,
-        border: Border.all(color: fg, width: 2),
+        border: Border.all(color: fg, width: 1.5),
       ),
       alignment: Alignment.center,
       child: Text(
         '$order',
         style: TextStyle(
-            color: fg, fontSize: 14, fontWeight: FontWeight.w800),
+            color: fg, fontSize: 11, fontWeight: FontWeight.w800),
       ),
     );
   }
 }
-
 
 class _MiniChip extends StatelessWidget {
   final String label;
@@ -867,49 +1226,8 @@ class _MiniChip extends StatelessWidget {
         child: Text(label,
             style: TextStyle(
                 fontSize: 10,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: fg)),
-      );
-}
-
-class _HighlightBanner extends StatelessWidget {
-  final _HighlightDef def;
-
-  const _HighlightBanner({required this.def});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: AppSpacing.cardPadding,
-        color: def.bg,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(def.icon, color: def.fg, size: 20),
-            AppSpacing.hGapSm,
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    def.title,
-                    style: TextStyle(
-                        color: def.fg,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    def.body,
-                    style: TextStyle(
-                        color: def.fg.withValues(alpha: 0.85),
-                        fontSize: 12,
-                        height: 1.45),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       );
 }
 
@@ -930,7 +1248,7 @@ class _SectionLabel extends StatelessWidget {
             label,
             style: TextStyle(
                 fontSize: 10,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 color: color,
                 letterSpacing: 0.6),
           ),
@@ -948,7 +1266,7 @@ class _TraceRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final agentName =
         isInbound ? trace.sourceAgent : trace.targetAgent;
-    final short = _kShort[agentName] ?? agentName;
+    final short = _kShortNames[agentName] ?? agentName;
     final fg = isInbound ? AppColors.brand : AppColors.accent;
     final bg = isInbound ? AppColors.brandSubtle : AppColors.accentSubtle;
 
@@ -956,9 +1274,9 @@ class _TraceRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: AppSpacing.cardPadding,
       decoration: BoxDecoration(
-        color: bg.withValues(alpha: 0.4),
+        color: bg.withValues(alpha: 0.25),
         borderRadius: AppSpacing.roundedMd,
-        border: Border.all(color: bg),
+        border: Border.all(color: bg.withValues(alpha: 0.5)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -971,8 +1289,8 @@ class _TraceRow extends StatelessWidget {
             child: Text(
               short,
               style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
                   color: fg),
             ),
           ),
@@ -981,7 +1299,7 @@ class _TraceRow extends StatelessWidget {
             child: Text(
               trace.influenceDescription ??
                   (isInbound
-                      ? 'Provided input to this agent'
+                      ? 'Provided input context to this agent'
                       : 'Received output from this agent'),
               style: const TextStyle(
                   fontSize: 12,
@@ -1030,33 +1348,35 @@ class _JsonSection extends StatelessWidget {
         children: [
           GestureDetector(
             onTap: onToggle,
-            child: Row(
-              children: [
-                _SectionLabel(
-                    icon: accent
-                        ? Icons.output_rounded
-                        : Icons.input_rounded,
-                    label: label,
-                    color: fg),
-                AppSpacing.hGapSm,
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfacePage,
-                    borderRadius: AppSpacing.roundedPill,
-                    border: const Border.fromBorderSide(
-                        BorderSide(color: AppColors.outline)),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Row(
+                children: [
+                  _SectionLabel(
+                      icon: accent
+                          ? Icons.output_rounded
+                          : Icons.input_rounded,
+                      label: label,
+                      color: fg),
+                  AppSpacing.hGapSm,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfacePage,
+                      borderRadius: AppSpacing.roundedPill,
+                      border: Border.all(color: AppColors.outline),
+                    ),
+                    child: Text(
+                      visible ? 'Hide JSON' : 'Show JSON',
+                      style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary),
+                    ),
                   ),
-                  child: Text(
-                    visible ? 'Hide JSON' : 'Show JSON',
-                    style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textMuted),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           if (visible) ...[

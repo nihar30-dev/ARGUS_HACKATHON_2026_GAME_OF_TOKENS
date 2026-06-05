@@ -5,8 +5,6 @@ import 'package:provider/provider.dart';
 
 import '../app/routes.dart';
 import '../core/responsive.dart';
-// ApiException is re-exported from meeting_repository.dart — no direct
-// api_service.dart import needed in screens.
 import '../services/meeting_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -21,13 +19,22 @@ const _kDemoRole = 'CEO';
 const _kDemoObjective = 'Discuss MEDplat digital health platform partnership';
 const _kDemoOffering = 'MEDplat open-source configurable digital health platform';
 
-const _kLoadingSteps = [
-  'Researching organization…',
-  'Building stakeholder persona…',
-  'Crafting engagement strategy…',
-  'Predicting objections…',
-  'Validating with critic agent…',
-  'Synthesizing final report…',
+const _kAgentNames = [
+  'Organization Research Agent',
+  'Stakeholder Persona Agent',
+  'Engagement Strategy Agent',
+  'Objection Prediction Agent',
+  'Critic Validator Agent',
+  'Final Synthesis Agent',
+];
+
+const _kLoadingDescriptions = [
+  'Analyzing hospital history, EMR vendors (Tasy/McKesson), and regional footprint...',
+  'Constructing detailed profile for CEO: focus on clinical APIs and interoperability...',
+  'Framing MEDplat positioning as a unification layer, not vendor replacement...',
+  'Anticipating pushback on integration timeline and HL7 FHIR compliance...',
+  'Checking strategy and objection plays for compliance and claims validation...',
+  'Synthesizing final executive briefing document and strategic playbook...',
 ];
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -58,7 +65,8 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
     super.initState();
     _meetingDate = DateTime.now().add(const Duration(days: 7));
     _dateCtrl = TextEditingController(text: _formatDate(_meetingDate));
-    _prefillDemo();
+    // Kept empty by default to look like a premium clean SaaS product,
+    // but the user can easily pre-fill using the demo button.
   }
 
   @override
@@ -83,11 +91,13 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
   }
 
   void _prefillDemo() {
-    _orgCtrl.text = _kDemoOrg;
-    _roleCtrl.text = _kDemoRole;
-    _objCtrl.text = _kDemoObjective;
-    _offerCtrl.text = _kDemoOffering;
-    _setDate(DateTime.now().add(const Duration(days: 7)));
+    setState(() {
+      _orgCtrl.text = _kDemoOrg;
+      _roleCtrl.text = _kDemoRole;
+      _objCtrl.text = _kDemoObjective;
+      _offerCtrl.text = _kDemoOffering;
+      _setDate(DateTime.now().add(const Duration(days: 7)));
+    });
   }
 
   void _setDate(DateTime d) {
@@ -109,10 +119,17 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
 
   void _startLoadingAnimation() {
     _loadingStep = 0;
-    _loadingTimer = Timer.periodic(const Duration(milliseconds: 1400), (_) {
+    final isMock = MeetingRepository.useMockData;
+    // Walk through steps quickly in mock mode so user sees the progress,
+    // otherwise take more time to match real backend LLM pipeline execution.
+    final stepDuration = isMock ? const Duration(milliseconds: 350) : const Duration(milliseconds: 4500);
+
+    _loadingTimer = Timer.periodic(stepDuration, (_) {
       if (!mounted) return;
       setState(() {
-        _loadingStep = (_loadingStep + 1).clamp(0, _kLoadingSteps.length - 1);
+        if (_loadingStep < _kAgentNames.length - 1) {
+          _loadingStep++;
+        }
       });
     });
   }
@@ -125,22 +142,14 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
   static String _friendlyError(Object e) {
     if (e is ApiException) {
       if (e.isNetworkError) {
-        return 'Cannot connect to the server. '
-            'Check your network connection or use the demo below.';
+        return 'Cannot connect to the server. Check your network or make sure the Spring Boot backend is running.';
       }
       if (e.isServerError) {
-        return 'The server encountered an error. '
-            'Please try again, or use "Reset to Demo Values" and submit.';
-      }
-      if (e.isBadRequest) {
-        return 'The server rejected the request. '
-            'Please review your inputs and try again.';
+        return 'The server encountered an error while orchestrating agents. Please try again.';
       }
       return e.message;
     }
-    final raw = e.toString();
-    if (raw.startsWith('Exception:')) return raw.substring(10).trim();
-    return raw;
+    return e.toString();
   }
 
   Future<void> _submit() async {
@@ -162,7 +171,9 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
         stakeholderRole: _roleCtrl.text.trim(),
       );
       if (!mounted) return;
-      Navigator.pushNamed(context, Routes.trace, arguments: session);
+      
+      // Navigate to the Trace view to show agent flow
+      Navigator.pushReplacementNamed(context, Routes.trace, arguments: session);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = _friendlyError(e));
@@ -178,33 +189,38 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: _appBar(),
-      body: SingleChildScrollView(
-        child: Responsive.centered(
-          context,
-          Padding(
-            padding: Responsive.pagePadding(context),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _HeroBanner(),
-                AppSpacing.gapLg,
-                if (_error != null) ...[
-                  ErrorView(
-                    message: _error!,
-                    onDismiss: () => setState(() => _error = null),
-                  ),
-                  AppSpacing.gapMd,
-                ],
-                _buildFormCard(),
-                AppSpacing.gapMd,
-                _buildActions(),
-                AppSpacing.gapXl,
-                _buildPipelineSection(),
-                AppSpacing.gapXl,
-              ],
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: Responsive.centered(
+              context,
+              Padding(
+                padding: Responsive.pagePadding(context),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _HeroBanner(onPrefillDemo: _prefillDemo),
+                    AppSpacing.gapLg,
+                    if (_error != null) ...[
+                      ErrorView(
+                        message: _error!,
+                        onDismiss: () => setState(() => _error = null),
+                      ),
+                      AppSpacing.gapMd,
+                    ],
+                    _buildFormCard(),
+                    AppSpacing.gapMd,
+                    _buildActions(),
+                    AppSpacing.gapXl,
+                    _buildPipelinePreview(),
+                    AppSpacing.gapXl,
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
+          if (_loading) _buildLoadingOverlay(),
+        ],
       ),
     );
   }
@@ -236,19 +252,18 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
             _field(
               ctrl: _orgCtrl,
               label: 'Organization Name',
-              hint: 'e.g. Apollo Hospitals',
+              hint: 'Who are you meeting with? (e.g. Apollo Hospitals)',
               icon: Icons.business_outlined,
               maxLength: 100,
             ),
             const SizedBox(height: AppSpacing.smMd),
-            // Stakeholder Role + Meeting Date — side by side on wider screens
             Responsive.isMobile(context)
                 ? Column(
                     children: [
                       _field(
                         ctrl: _roleCtrl,
                         label: 'Stakeholder Role',
-                        hint: 'e.g. CEO, CTO, CFO',
+                        hint: 'Who is the decision maker? (e.g. CEO, CTO)',
                         icon: Icons.person_outlined,
                         maxLength: 60,
                       ),
@@ -262,7 +277,7 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
                         child: _field(
                           ctrl: _roleCtrl,
                           label: 'Stakeholder Role',
-                          hint: 'e.g. CEO, CTO, CFO',
+                          hint: 'Who is the decision maker? (e.g. CEO, CTO)',
                           icon: Icons.person_outlined,
                           maxLength: 60,
                         ),
@@ -280,7 +295,7 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
             _field(
               ctrl: _objCtrl,
               label: 'Meeting Objective',
-              hint: 'What do you want to achieve in this meeting?',
+              hint: 'What do you want to achieve? (e.g. Pitch integration platform)',
               icon: Icons.flag_outlined,
               maxLines: 3,
             ),
@@ -288,7 +303,7 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
             _field(
               ctrl: _offerCtrl,
               label: 'Offering / Product Description',
-              hint: 'Describe what you are proposing or selling',
+              hint: 'Describe your product or proposed partnership details...',
               icon: Icons.inventory_2_outlined,
               maxLines: 4,
             ),
@@ -343,72 +358,212 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
   // ── Actions ───────────────────────────────────────────────────────────────
 
   Widget _buildActions() {
-    final step = _loadingStep.clamp(0, _kLoadingSteps.length - 1);
-    final stepLabel = _kLoadingSteps[step];
-
     return Column(
       children: [
         PrimaryButton(
           label: 'Generate Meeting Intelligence',
-          loadingLabel: stepLabel,
           icon: Icons.auto_awesome,
           onPressed: _submit,
           loading: _loading,
           verticalPadding: AppSpacing.md,
         ),
-        AppSpacing.gapSm,
-        PrimaryButton(
-          outlined: true,
-          label: 'Reset to Demo Values',
-          icon: Icons.refresh_outlined,
-          onPressed: _loading ? null : _prefillDemo,
-        ),
       ],
     );
   }
 
-  // ── Pipeline section ──────────────────────────────────────────────────────
+  // ── Pipeline Preview ──────────────────────────────────────────────────────
 
-  Widget _buildPipelineSection() {
-    const agents = [
-      _AgentInfo('1', 'Organization Research', Icons.search_outlined, true),
-      _AgentInfo('2', 'Stakeholder Persona', Icons.person_outlined, false),
-      _AgentInfo('3', 'Engagement Strategy', Icons.lightbulb_outlined, true),
-      _AgentInfo('4', 'Objection Prediction', Icons.warning_amber_outlined, true),
-      _AgentInfo('5', 'Critic Validator', Icons.fact_check_outlined, false),
-      _AgentInfo('6', 'Final Synthesis', Icons.summarize_outlined, true),
-    ];
+  Widget _buildPipelinePreview() {
+    return Container(
+      width: double.infinity,
+      decoration: AppTheme.cardDecoration,
+      padding: AppSpacing.cardPaddingLg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHeader(
+            label: 'COLLABORATIVE PIPELINE WORKFLOW',
+            description:
+                'Six specialized AI and rule-based agents run sequentially. Each agent builds upon and validates prior answers to construct an airtight briefing strategy.',
+          ),
+          AppSpacing.gapLg,
+          for (var i = 0; i < _kAgentNames.length; i++)
+            _PreviewStepperRow(
+              index: i + 1,
+              name: _kAgentNames[i],
+              isLast: i == _kAgentNames.length - 1,
+              isGemini: i != 1 && i != 4, // 2 and 5 are rule-based
+            ),
+        ],
+      ),
+    );
+  }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionHeader(
-          label: 'AGENT PIPELINE',
-          description:
-              'Each agent reads all prior outputs. Their interdependency is the strategy.',
-        ),
-        AppSpacing.gapMd,
-        for (var i = 0; i < agents.length; i++)
-          _AgentTimelineRow(info: agents[i], isLast: i == agents.length - 1),
-        AppSpacing.gapMd,
-        const Row(
-          children: [
-            _TypeLegend(
-              dot: AppColors.geminiSurface,
-              border: AppColors.gemini,
-              label: 'Gemini AI',
-              text: AppColors.gemini,
+  // ── Animated Loading Overlay ──────────────────────────────────────────────
+
+  Widget _buildLoadingOverlay() {
+    final activeAgentName = _kAgentNames[_loadingStep];
+    final activeDescription = _kLoadingDescriptions[_loadingStep];
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 300),
+      builder: (context, value, child) => Container(
+        color: Colors.black.withValues(alpha: 0.65 * value),
+        width: double.infinity,
+        height: double.infinity,
+        child: child,
+      ),
+      child: Center(
+        child: Container(
+          width: 480,
+          margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceCard,
+            borderRadius: AppSpacing.roundedLg,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 24,
+                spreadRadius: 4,
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: AppSpacing.cardPaddingLg,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3.5,
+                      color: AppColors.brand,
+                    ),
+                  ),
+                  AppSpacing.gapLg,
+                  const Text(
+                    'Multi-Agent Pipeline Executing',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Currently Running: $activeAgentName',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.brand,
+                    ),
+                  ),
+                  AppSpacing.gapMd,
+                  Container(
+                    width: double.infinity,
+                    padding: AppSpacing.cardPadding,
+                    decoration: AppTheme.brandSurface,
+                    child: Text(
+                      activeDescription,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                  AppSpacing.gapLg,
+                  const Divider(),
+                  AppSpacing.gapMd,
+                  // Active Progress Stepper List
+                  Column(
+                    children: List.generate(_kAgentNames.length, (index) {
+                      final name = _kAgentNames[index];
+                      final isCompleted = index < _loadingStep;
+                      final isActive = index == _loadingStep;
+
+                      Color itemColor = AppColors.textMuted;
+                      Widget leadingWidget = Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.outline, width: 1.5),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${index + 1}',
+                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textMuted),
+                        ),
+                      );
+
+                      if (isCompleted) {
+                        itemColor = AppColors.success;
+                        leadingWidget = const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.success,
+                          size: 18,
+                        );
+                      } else if (isActive) {
+                        itemColor = AppColors.brand;
+                        leadingWidget = const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.brand,
+                          ),
+                        );
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6.0),
+                        child: Row(
+                          children: [
+                            leadingWidget,
+                            AppSpacing.hGapMd,
+                            Expanded(
+                              child: Text(
+                                name,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                                  color: itemColor,
+                                ),
+                              ),
+                            ),
+                            if (isActive)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: AppColors.brandSubtle,
+                                  borderRadius: AppSpacing.roundedPill,
+                                ),
+                                child: const Text(
+                                  'RUNNING',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.brand,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ),
+                ],
+              ),
             ),
-            SizedBox(width: AppSpacing.md),
-            _TypeLegend(
-              dot: AppColors.ruleBasedSurface,
-              border: AppColors.ruleBased,
-              label: 'Rule-based',
-              text: AppColors.ruleBased,
-            ),
-          ],
+          ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -416,7 +571,9 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
 // ── Reusable private widgets ──────────────────────────────────────────────────
 
 class _HeroBanner extends StatelessWidget {
-  const _HeroBanner();
+  final VoidCallback onPrefillDemo;
+
+  const _HeroBanner({required this.onPrefillDemo});
 
   @override
   Widget build(BuildContext context) {
@@ -427,53 +584,62 @@ class _HeroBanner extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
-            decoration: BoxDecoration(
-              color: AppColors.brand,
-              borderRadius: AppSpacing.roundedPill,
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.auto_awesome, color: Colors.white, size: 11),
-                SizedBox(width: AppSpacing.xs),
-                Text(
-                  'ARGUS Hackathon 2026',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+                decoration: BoxDecoration(
+                  color: AppColors.brand,
+                  borderRadius: AppSpacing.roundedPill,
                 ),
-              ],
-            ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome, color: Colors.white, size: 11),
+                    SizedBox(width: AppSpacing.xs),
+                    Text(
+                      'ARGUS Hackathon 2026',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: onPrefillDemo,
+                icon: const Icon(Icons.refresh_outlined, size: 14),
+                label: const Text(
+                  'Fill with Demo Values',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
           ),
           AppSpacing.gapSm,
-          Text(
-            'Meeting Intelligence',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w800,
-                ),
+          const Text(
+            'Meeting Strategy Generator',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w800,
+              fontSize: 22,
+            ),
           ),
           AppSpacing.gapXs,
           const Text(
-            'Six specialized agents collaborate — each reading and challenging prior outputs — to produce a meeting strategy no single agent could.',
+            'Provide the target organization and details below. Six cooperative agents will build, Objection-proof, and validate a customized strategy.',
             style: TextStyle(
-                color: AppColors.textSecondary, fontSize: 14, height: 1.5),
+                color: AppColors.textSecondary, fontSize: 13, height: 1.55),
           ),
         ],
       ),
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   final String label;
@@ -492,7 +658,7 @@ class _SectionHeader extends StatelessWidget {
           Text(
             description!,
             style: const TextStyle(
-                color: AppColors.textMuted, fontSize: 13, height: 1.4),
+                color: AppColors.textSecondary, fontSize: 12, height: 1.5),
           ),
         ],
       ],
@@ -500,38 +666,33 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _AgentInfo {
-  final String order;
+class _PreviewStepperRow extends StatelessWidget {
+  final int index;
   final String name;
-  final IconData icon;
+  final bool isLast;
   final bool isGemini;
 
-  const _AgentInfo(this.order, this.name, this.icon, this.isGemini);
-}
-
-class _AgentTimelineRow extends StatelessWidget {
-  final _AgentInfo info;
-  final bool isLast;
-
-  const _AgentTimelineRow({required this.info, required this.isLast});
+  const _PreviewStepperRow({
+    required this.index,
+    required this.name,
+    required this.isLast,
+    required this.isGemini,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final fg = info.isGemini ? AppColors.gemini : AppColors.ruleBased;
-    final bg = info.isGemini ? AppColors.geminiSurface : AppColors.ruleBasedSurface;
+    final fg = isGemini ? AppColors.gemini : AppColors.ruleBased;
+    final bg = isGemini ? AppColors.geminiSurface : AppColors.ruleBasedSurface;
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Timeline spine
           Column(
             children: [
               Container(
-                width: 28,
-                height: 28,
+                width: 24,
+                height: 24,
                 decoration: BoxDecoration(
                   color: bg,
                   shape: BoxShape.circle,
@@ -539,55 +700,49 @@ class _AgentTimelineRow extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  info.order,
-                  style: TextStyle(
-                      color: fg,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700),
+                  '$index',
+                  style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold),
                 ),
               ),
               if (!isLast)
                 Expanded(
                   child: Container(
-                      width: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 2),
-                      color: AppColors.outline),
+                    width: 1.5,
+                    color: AppColors.outline,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                  ),
                 ),
             ],
           ),
           AppSpacing.hGapMd,
-          // Row content
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(
-                  bottom: isLast ? 0 : AppSpacing.smMd, top: 4),
+              padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.md, top: 2),
               child: Row(
                 children: [
-                  Icon(info.icon, size: 15, color: fg),
-                  AppSpacing.hGapSm,
-                  Expanded(
-                    child: Text(
-                      info.name,
-                      style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textPrimary),
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
                     ),
                   ),
+                  AppSpacing.hGapSm,
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                     decoration: BoxDecoration(
                       color: bg,
                       borderRadius: AppSpacing.roundedPill,
-                      border: Border.all(color: AppColors.outline),
+                      border: Border.all(color: fg.withValues(alpha: 0.2)),
                     ),
                     child: Text(
-                      info.isGemini ? 'Gemini' : 'Rule-based',
+                      isGemini ? 'Gemini AI' : 'Rule-based',
                       style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: fg),
+                        fontSize: 8,
+                        fontWeight: FontWeight.w700,
+                        color: fg,
+                      ),
                     ),
                   ),
                 ],
@@ -596,46 +751,6 @@ class _AgentTimelineRow extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _TypeLegend extends StatelessWidget {
-  final Color dot;
-  final Color border;
-  final String label;
-  final Color text;
-
-  const _TypeLegend({
-    required this.dot,
-    required this.border,
-    required this.label,
-    required this.text,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: dot,
-            shape: BoxShape.circle,
-            border: Border.all(color: border),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.xs),
-        Text(
-          label,
-          style: TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w500, color: text),
-        ),
-      ],
     );
   }
 }

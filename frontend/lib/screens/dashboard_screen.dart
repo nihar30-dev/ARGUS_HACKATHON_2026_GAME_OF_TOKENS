@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../app/routes.dart';
 import '../core/responsive.dart';
 import '../models/session_response.dart';
-import '../services/mock_meeting_service.dart';
+import '../services/meeting_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme.dart';
@@ -13,41 +14,182 @@ import '../widgets/trace_workflow_widget.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  bool _loadingDemo = false;
+
+  // Static preview runs for the workflow section when there is no active session data.
+  // This shows the 6-agent sequential flow in a clean, educational way.
+  late final List<AgentRun> _previewRuns;
+
+  @override
+  void initState() {
+    super.initState();
+    _previewRuns = [
+      AgentRun(
+        agentName: 'OrganizationResearchAgent',
+        executionOrderIndex: 1,
+        confidenceScore: 0.92,
+        influencedBy: [],
+        usedGemini: true,
+        executionMs: 2400,
+        outputJson: '',
+      ),
+      AgentRun(
+        agentName: 'StakeholderPersonaAgent',
+        executionOrderIndex: 2,
+        confidenceScore: 0.88,
+        influencedBy: ['OrganizationResearchAgent'],
+        usedGemini: false,
+        executionMs: 150,
+        outputJson: '',
+      ),
+      AgentRun(
+        agentName: 'EngagementStrategyAgent',
+        executionOrderIndex: 3,
+        confidenceScore: 0.85,
+        influencedBy: ['OrganizationResearchAgent', 'StakeholderPersonaAgent'],
+        usedGemini: true,
+        executionMs: 3100,
+        outputJson: '',
+      ),
+      AgentRun(
+        agentName: 'ObjectionPredictionAgent',
+        executionOrderIndex: 4,
+        confidenceScore: 0.80,
+        influencedBy: [
+          'OrganizationResearchAgent',
+          'StakeholderPersonaAgent',
+          'EngagementStrategyAgent'
+        ],
+        usedGemini: true,
+        executionMs: 2800,
+        outputJson: '',
+      ),
+      AgentRun(
+        agentName: 'CriticValidatorAgent',
+        executionOrderIndex: 5,
+        confidenceScore: 0.95,
+        influencedBy: [
+          'OrganizationResearchAgent',
+          'StakeholderPersonaAgent',
+          'EngagementStrategyAgent',
+          'ObjectionPredictionAgent'
+        ],
+        usedGemini: false,
+        executionMs: 180,
+        outputJson: '',
+      ),
+      AgentRun(
+        agentName: 'FinalSynthesisAgent',
+        executionOrderIndex: 6,
+        confidenceScore: 0.90,
+        influencedBy: [
+          'OrganizationResearchAgent',
+          'StakeholderPersonaAgent',
+          'EngagementStrategyAgent',
+          'ObjectionPredictionAgent',
+          'CriticValidatorAgent'
+        ],
+        usedGemini: true,
+        executionMs: 3500,
+        outputJson: '',
+      ),
+    ];
+  }
+
+  Future<void> _runDemo() async {
+    setState(() => _loadingDemo = true);
+    try {
+      final repo = Provider.of<MeetingRepository>(context, listen: false);
+      final session = await repo.runDemo();
+      if (!mounted) return;
+      
+      // Navigate to trace view to showcase agent pipeline execution
+      Navigator.pushNamed(context, Routes.trace, arguments: session).then((_) {
+        if (mounted) setState(() {});
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error running demo: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingDemo = false);
+    }
+  }
+
+  void _goNew() {
+    Navigator.pushNamed(context, Routes.newMeeting).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final session = MockMeetingService.buildApolloSession();
+    final repo = Provider.of<MeetingRepository>(context);
+    final meetings = repo.recentMeetings;
 
     return Scaffold(
       appBar: _buildAppBar(context),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _HeroSection(onCta: () => _goNew(context)),
-            Padding(
-              padding: Responsive.pagePadding(context),
-              child: Responsive.centered(
-                context,
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AppSpacing.gapSm,
-                    _buildMainGrid(context, session),
-                    AppSpacing.gapXl,
-                    _WorkflowSection(session: session),
-                    AppSpacing.gapXl,
-                    _FeatureRow(),
-                    AppSpacing.gapXl,
-                  ],
-                ),
+      body: _loadingDemo
+          ? _buildDemoLoading()
+          : SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _HeroSection(
+                    onNewMeeting: _goNew,
+                    onViewDemo: _runDemo,
+                  ),
+                  Padding(
+                    padding: Responsive.pagePadding(context),
+                    child: Responsive.centered(
+                      context,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AppSpacing.gapLg,
+                          if (meetings.isEmpty)
+                            _EmptyState(onNewMeeting: _goNew, onRunDemo: _runDemo)
+                          else ...[
+                            Text(
+                              'LATEST MEETING BRIEFING',
+                              style: AppTheme.overlineStyle,
+                            ),
+                            AppSpacing.gapSm,
+                            _buildMainGrid(context, meetings.first),
+                            if (meetings.length > 1) ...[
+                              AppSpacing.gapXl,
+                              Text(
+                                'PREVIOUS BRIEFINGS',
+                                style: AppTheme.overlineStyle,
+                              ),
+                              AppSpacing.gapSm,
+                              _buildPreviousMeetingsList(meetings.skip(1).toList()),
+                            ],
+                          ],
+                          AppSpacing.gapXl,
+                          _WorkflowSection(runs: _previewRuns),
+                          AppSpacing.gapXl,
+                          const _FeatureRow(),
+                          AppSpacing.gapXl,
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -58,7 +200,7 @@ class DashboardScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.md, vertical: AppSpacing.sm),
             child: FilledButton.icon(
-              onPressed: () => _goNew(context),
+              onPressed: _goNew,
               icon: const Icon(Icons.add, size: 16),
               label: const Text('New Meeting'),
               style: FilledButton.styleFrom(
@@ -73,13 +215,84 @@ class DashboardScreen extends StatelessWidget {
         ],
       );
 
+  Widget _buildDemoLoading() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: AppTheme.heroDecoration.copyWith(borderRadius: BorderRadius.zero),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(
+                width: 56,
+                height: 56,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 4.5,
+                ),
+              ),
+              AppSpacing.gapLg,
+              const Text(
+                'Initializing Multi-Agent Pipeline...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              AppSpacing.gapXs,
+              Text(
+                'Orchestrating 6 specialized agents for Apollo Hospitals demo',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMainGrid(BuildContext context, SessionResponse session) {
     final isMobile = Responsive.isMobile(context);
     final cards = [
-      Expanded(child: _RecentMeetingCard(session: session)),
+      Expanded(
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 400),
+          builder: (context, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, 15 * (1 - value)),
+              child: child,
+            ),
+          ),
+          child: _RecentMeetingCard(session: session),
+        ),
+      ),
       if (!isMobile) AppSpacing.hGapLg,
       if (isMobile) AppSpacing.gapMd,
-      Expanded(child: _AgentStatsCard(session: session)),
+      Expanded(
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 400),
+          builder: (context, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, 15 * (1 - value)),
+              child: child,
+            ),
+          ),
+          child: _AgentStatsCard(session: session),
+        ),
+      ),
     ];
 
     return isMobile
@@ -87,16 +300,104 @@ class DashboardScreen extends StatelessWidget {
         : Row(crossAxisAlignment: CrossAxisAlignment.start, children: cards);
   }
 
-  void _goNew(BuildContext context) =>
-      Navigator.pushNamed(context, Routes.newMeeting);
+  Widget _buildPreviousMeetingsList(List<SessionResponse> previousMeetings) {
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: previousMeetings.length,
+      separatorBuilder: (_, __) => AppSpacing.gapSm,
+      itemBuilder: (context, index) {
+        final session = previousMeetings[index];
+        final avgConf = session.agentRuns.isEmpty
+            ? 0.0
+            : session.agentRuns
+                    .map((r) => r.confidenceScore)
+                    .reduce((a, b) => a + b) /
+                session.agentRuns.length;
+
+        return TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0.0, end: 1.0),
+          duration: Duration(milliseconds: 300 + (index * 100)),
+          builder: (context, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, 10 * (1 - value)),
+              child: child,
+            ),
+          ),
+          child: Container(
+            decoration: AppTheme.cardDecoration,
+            child: ListTile(
+              leading: Container(
+                width: 32,
+                height: 32,
+                decoration: const BoxDecoration(
+                  color: AppColors.brandSubtle,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.business_outlined,
+                    color: AppColors.brand, size: 16),
+              ),
+              title: Text(
+                session.organizationName,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                [
+                  if (session.stakeholderRole != null) session.stakeholderRole!,
+                  if (session.meetingObjective != null) session.meetingObjective!,
+                ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.forConfidenceSurface(avgConf),
+                      borderRadius: AppSpacing.roundedPill,
+                    ),
+                    child: Text(
+                      '${(avgConf * 100).toStringAsFixed(0)}% Match',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.forConfidence(avgConf),
+                      ),
+                    ),
+                  ),
+                  AppSpacing.hGapSm,
+                  IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onPressed: () => Navigator.pushNamed(
+                      context,
+                      Routes.trace,
+                      arguments: session,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
 
 class _HeroSection extends StatelessWidget {
-  final VoidCallback onCta;
+  final VoidCallback onNewMeeting;
+  final VoidCallback onViewDemo;
 
-  const _HeroSection({required this.onCta});
+  const _HeroSection({
+    required this.onNewMeeting,
+    required this.onViewDemo,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -144,13 +445,13 @@ class _HeroSection extends StatelessWidget {
             AppSpacing.gapMd,
 
             // Title
-            Text(
+            const Text(
               'MeetWise',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: isMobile ? 40 : 56,
+                fontSize: 48,
                 fontWeight: FontWeight.w800,
-                letterSpacing: -2,
+                letterSpacing: -1.5,
                 height: 1.05,
               ),
             ),
@@ -174,10 +475,10 @@ class _HeroSection extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: AppSpacing.roundedMd,
               ),
-              child: Text(
+              child: const Text(
                 '6 specialized agents collaborate — each reading and challenging prior outputs — to produce a strategy no single model could.',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
+                  color: Colors.white,
                   fontSize: 13,
                   height: 1.5,
                 ),
@@ -191,9 +492,9 @@ class _HeroSection extends StatelessWidget {
               runSpacing: AppSpacing.sm,
               children: [
                 FilledButton.icon(
-                  onPressed: onCta,
+                  onPressed: onNewMeeting,
                   icon: const Icon(Icons.auto_awesome, size: 18),
-                  label: const Text('Generate Meeting Intelligence'),
+                  label: const Text('New Meeting Intelligence'),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: AppColors.brand,
@@ -204,9 +505,9 @@ class _HeroSection extends StatelessWidget {
                   ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: onCta,
+                  onPressed: onViewDemo,
                   icon: const Icon(Icons.play_circle_outline, size: 18),
-                  label: const Text('View Demo  →  Apollo Hospitals'),
+                  label: const Text('Run Demo (Apollo Hospitals)'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
@@ -220,6 +521,87 @@ class _HeroSection extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Empty State ───────────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onNewMeeting;
+  final VoidCallback onRunDemo;
+
+  const _EmptyState({
+    required this.onNewMeeting,
+    required this.onRunDemo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.xl,
+        vertical: AppSpacing.xxl,
+      ),
+      decoration: AppTheme.cardDecoration,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: const BoxDecoration(
+              color: AppColors.brandLight,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.assignment_outlined,
+              color: AppColors.brand,
+              size: 30,
+            ),
+          ),
+          AppSpacing.gapMd,
+          const Text(
+            'No Meeting Strategy Generated Yet',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Text(
+              'Generate your first meeting intelligence brief. Six specialized agents will collaborate to analyze your prospect, predict objections, and construct an engagement playbook.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+          ),
+          AppSpacing.gapLg,
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              FilledButton.icon(
+                onPressed: onNewMeeting,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Prepare Meeting Strategy'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onRunDemo,
+                icon: const Icon(Icons.play_circle_outline, size: 16),
+                label: const Text('Try Sample Demo'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -275,9 +657,14 @@ class _RecentMeetingCard extends StatelessWidget {
                           color: AppColors.textPrimary),
                     ),
                     const SizedBox(height: 2),
-                    const Text('CEO  ·  Partnership Discussion',
-                        style: TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                    Text(
+                      [
+                        if (session.stakeholderRole != null) session.stakeholderRole!,
+                        'Briefing Session',
+                      ].join(' · '),
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary),
+                    ),
                   ],
                 ),
               ),
@@ -298,19 +685,19 @@ class _RecentMeetingCard extends StatelessWidget {
                 label: 'Avg Confidence',
                 color: AppColors.forConfidence(avgConf),
               ),
-              const SizedBox(width: AppSpacing.smMd),
+              const SizedBox(width: AppSpacing.sm),
               _MetricTile(
                 value: '${session.agentRuns.length}',
                 label: 'Agents Run',
                 color: AppColors.brand,
               ),
-              const SizedBox(width: AppSpacing.smMd),
+              const SizedBox(width: AppSpacing.sm),
               _MetricTile(
                 value: '${session.traces.length}',
                 label: 'Trace Links',
                 color: AppColors.accent,
               ),
-              const SizedBox(width: AppSpacing.smMd),
+              const SizedBox(width: AppSpacing.sm),
               _MetricTile(
                 value: '${(totalMs / 1000).toStringAsFixed(1)}s',
                 label: 'Runtime',
@@ -330,7 +717,7 @@ class _RecentMeetingCard extends StatelessWidget {
             Text(
               '+ ${session.agentRuns.length - 3} more agents',
               style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   color: AppColors.textMuted,
                   fontWeight: FontWeight.w500),
             ),
@@ -515,7 +902,7 @@ class _AgentStatsCard extends StatelessWidget {
                 AppSpacing.hGapSm,
                 const Expanded(
                   child: Text(
-                    'Critic Validator flagged 1 unsupported claim → FinalSynthesis revised it before delivery.',
+                    'Critic Validator checks all prior outputs, flags unsupported claims, and ensures Final Synthesis is fully validated.',
                     style: TextStyle(
                         fontSize: 12,
                         color: AppColors.warning,
@@ -535,9 +922,9 @@ class _AgentStatsCard extends StatelessWidget {
 // ── Workflow section ──────────────────────────────────────────────────────────
 
 class _WorkflowSection extends StatelessWidget {
-  final SessionResponse session;
+  final List<AgentRun> runs;
 
-  const _WorkflowSection({required this.session});
+  const _WorkflowSection({required this.runs});
 
   @override
   Widget build(BuildContext context) {
@@ -584,7 +971,7 @@ class _WorkflowSection extends StatelessWidget {
         Container(
           decoration: AppTheme.cardDecoration,
           child: TraceWorkflowWidget(
-            runs: session.agentRuns,
+            runs: runs,
             direction: Axis.horizontal,
           ),
         ),
@@ -769,7 +1156,7 @@ class _MetricTile extends StatelessWidget {
         children: [
           Text(value,
               style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: color)),
           const SizedBox(height: 2),
@@ -784,7 +1171,6 @@ class _MetricTile extends StatelessWidget {
     );
   }
 }
-
 
 class _AgentConfidenceRow extends StatelessWidget {
   final AgentRun run;
@@ -836,4 +1222,3 @@ class _AgentConfidenceRow extends StatelessWidget {
     );
   }
 }
-
