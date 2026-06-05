@@ -16,11 +16,23 @@ import java.util.Map;
 @Slf4j
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
+        log.warn("Not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(errorBody(ex.getMessage(), HttpStatus.NOT_FOUND));
+    }
+
     @ExceptionHandler(MeetwiseException.class)
     public ResponseEntity<Map<String, Object>> handleMeetwiseException(MeetwiseException ex) {
-        log.error("MeetwiseException: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(errorBody(ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR));
+        HttpStatus status = HttpStatus.resolve(ex.getHttpStatus());
+        if (status == null) status = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (status.is5xxServerError()) {
+            log.error("MeetwiseException: {}", ex.getMessage(), ex);
+        } else {
+            log.warn("MeetwiseException ({}): {}", status, ex.getMessage());
+        }
+        return ResponseEntity.status(status).body(errorBody(ex.getMessage(), status));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

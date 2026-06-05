@@ -6,6 +6,7 @@ import com.argusoft.meetwise.agent.AgentOutput;
 import com.argusoft.meetwise.dto.*;
 import com.argusoft.meetwise.entity.*;
 import com.argusoft.meetwise.exception.MeetwiseException;
+import com.argusoft.meetwise.exception.ResourceNotFoundException;
 import com.argusoft.meetwise.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class MeetingOrchestrationService {
 
+    private static final UUID DEMO_SESSION_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     private final List<Agent> agents;
     private final MeetingRequestRepository meetingRequestRepository;
     private final AgentRunRepository agentRunRepository;
@@ -28,16 +32,92 @@ public class MeetingOrchestrationService {
     private final FinalReportRepository finalReportRepository;
     private final ObjectMapper objectMapper;
 
+    // -------------------------------------------------------------------------
+    // POST /api/meetings — create a meeting record, return immediately (PENDING)
+    // -------------------------------------------------------------------------
     @Transactional
-    public MeetingSessionResponseDTO orchestrate(MeetingRequestDTO dto) {
+    public CreateMeetingResponseDTO create(MeetingRequestDTO dto) {
         MeetingRequest meeting = meetingRequestRepository.save(MeetingRequest.builder()
                 .organizationName(dto.organizationName())
                 .stakeholderRole(dto.stakeholderRole())
                 .meetingObjective(dto.meetingObjective())
                 .offeringDescription(dto.offeringDescription())
-                .status("RUNNING")
+                .status("PENDING")
                 .build());
+        log.info("Created meeting {} for '{}'", meeting.getId(), meeting.getOrganizationName());
+        return CreateMeetingResponseDTO.from(meeting);
+    }
 
+    // -------------------------------------------------------------------------
+    // POST /api/meetings/{id}/run — run the 6-agent pipeline synchronously
+    // -------------------------------------------------------------------------
+    @Transactional
+    public MeetingSessionResponseDTO runPipeline(UUID meetingId) {
+        MeetingRequest meeting = meetingRequestRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Meeting not found: " + meetingId));
+
+        if (!"PENDING".equals(meeting.getStatus())) {
+            throw new MeetwiseException(
+                    "Meeting " + meetingId + " cannot be run — status is '" + meeting.getStatus()
+                    + "' (expected PENDING)", 400);
+        }
+
+        log.info("[Meeting {}] Starting agent pipeline for '{}'", meetingId, meeting.getOrganizationName());
+        return executePipeline(meeting);
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/meetings/{id} — full session (runs + traces + report)
+    // -------------------------------------------------------------------------
+    public MeetingSessionResponseDTO getSession(UUID meetingId) {
+        MeetingRequest meeting = meetingRequestRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Meeting not found: " + meetingId));
+        List<AgentRun> runs = agentRunRepository
+                .findByMeetingRequestIdOrderByExecutionOrderAsc(meetingId);
+        List<AgentTrace> traces = agentTraceRepository
+                .findByMeetingRequestIdOrderByCreatedAtAsc(meetingId);
+        FinalReport report = finalReportRepository.findByMeetingRequestId(meetingId).orElse(null);
+        return buildResponse(meeting, runs, traces, report);
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/meetings/{id}/trace — just the trace rows
+    // -------------------------------------------------------------------------
+    public List<AgentTraceDTO> getTraces(UUID meetingId) {
+        if (!meetingRequestRepository.existsById(meetingId)) {
+            throw new ResourceNotFoundException("Meeting not found: " + meetingId);
+        }
+        return agentTraceRepository
+                .findByMeetingRequestIdOrderByCreatedAtAsc(meetingId)
+                .stream()
+                .map(AgentTraceDTO::from)
+                .collect(Collectors.toList());
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/meetings/{id}/report — just the final report
+    // -------------------------------------------------------------------------
+    public FinalReportDTO getReport(UUID meetingId) {
+        if (!meetingRequestRepository.existsById(meetingId)) {
+            throw new ResourceNotFoundException("Meeting not found: " + meetingId);
+        }
+        return finalReportRepository.findByMeetingRequestId(meetingId)
+                .map(r -> FinalReportDTO.from(r, objectMapper))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Report not ready for meeting: " + meetingId));
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/meetings/demo — always-available demo session (Apollo Hospitals)
+    // -------------------------------------------------------------------------
+    public MeetingSessionResponseDTO getDemoSession() {
+        return getSession(DEMO_SESSION_ID);
+    }
+
+    // -------------------------------------------------------------------------
+    // Internal pipeline execution
+    // -------------------------------------------------------------------------
+    private MeetingSessionResponseDTO executePipeline(MeetingRequest meeting) {
         UUID meetingId = meeting.getId();
         AgentContext context = new AgentContext(meeting);
         List<AgentRun> runs = new ArrayList<>();
@@ -45,58 +125,43 @@ public class MeetingOrchestrationService {
 
         List<Agent> pipeline = agents.stream()
                 .sorted(Comparator.comparingInt(Agent::getOrder))
-                .collect(Collectors.toList());
+                .toList();
 
-        try {
-            for (Agent agent : pipeline) {
-                log.info("[Meeting {}] Running {} (order {})", meetingId, agent.getName(), agent.getOrder());
-                long start = System.currentTimeMillis();
+        for (Agent agent : pipeline) {
+            log.info("[Meeting {}] Running {} (order {})", meetingId, agent.getName(), agent.getOrder());
+            long start = System.currentTimeMillis();
 
-                AgentOutput output = agent.execute(context);
-                long executionMs = System.currentTimeMillis() - start;
+            AgentOutput output = agent.execute(context);
+            long executionMs = System.currentTimeMillis() - start;
 
-                context.putOutput(agent.getName(), output.getOutputJson());
+            context.putOutput(agent.getName(), output.getOutputJson());
 
-                AgentRun run = agentRunRepository.save(toAgentRun(meetingId, output, executionMs));
-                runs.add(run);
+            AgentRun run = agentRunRepository.save(toAgentRun(meetingId, output, executionMs));
+            runs.add(run);
 
-                List<AgentTrace> agentTraces = buildTraces(meetingId, output);
-                traces.addAll(agentTraceRepository.saveAll(agentTraces));
+            List<AgentTrace> agentTraces = buildTraces(meetingId, output);
+            traces.addAll(agentTraceRepository.saveAll(agentTraces));
 
-                log.info("[Meeting {}] {} done in {}ms, confidence={}", meetingId,
-                        agent.getName(), executionMs, output.getConfidenceScore());
-            }
-
-            meeting.setStatus("COMPLETED");
-            meetingRequestRepository.save(meeting);
-
-            FinalReport report = saveFinalReport(meetingId, context.getOutput("FinalSynthesisAgent"));
-            return buildResponse(meeting, runs, traces, report);
-
-        } catch (Exception e) {
-            log.error("[Meeting {}] Orchestration failed: {}", meetingId, e.getMessage(), e);
-            meeting.setStatus("FAILED");
-            meetingRequestRepository.save(meeting);
-            throw new MeetwiseException("Orchestration failed: " + e.getMessage(), e);
+            log.info("[Meeting {}] {} done in {}ms, confidence={}",
+                    meetingId, agent.getName(), executionMs, output.getConfidenceScore());
         }
-    }
 
-    public MeetingSessionResponseDTO getSession(UUID meetingId) {
-        MeetingRequest meeting = meetingRequestRepository.findById(meetingId)
-                .orElseThrow(() -> new MeetwiseException("Meeting not found: " + meetingId));
-        List<AgentRun> runs = agentRunRepository.findByMeetingRequestIdOrderByExecutionOrderAsc(meetingId);
-        List<AgentTrace> traces = agentTraceRepository.findByMeetingRequestIdOrderByCreatedAtAsc(meetingId);
-        FinalReport report = finalReportRepository.findByMeetingRequestId(meetingId).orElse(null);
+        meeting.setStatus("COMPLETED");
+        meetingRequestRepository.save(meeting);
+
+        FinalReport report = saveFinalReport(meetingId, context.getOutput("FinalSynthesisAgent"));
+        log.info("[Meeting {}] Pipeline complete, overall confidence={}",
+                meetingId, report.getOverallConfidence());
+
         return buildResponse(meeting, runs, traces, report);
     }
 
     private AgentRun toAgentRun(UUID meetingId, AgentOutput output, long executionMs) {
-        String inputPayload = buildInputPayload(output.getInputSummary());
         return AgentRun.builder()
                 .meetingRequestId(meetingId)
                 .agentName(output.getAgentName())
                 .executionOrder(getOrder(output.getAgentName()))
-                .inputPayload(inputPayload)
+                .inputPayload(wrapSummary(output.getInputSummary()))
                 .outputPayload(output.getOutputJson())
                 .confidenceScore(output.getConfidenceScore())
                 .influencedBy(output.getInfluencedBy() == null ? ""
@@ -116,7 +181,7 @@ public class MeetingOrchestrationService {
                         .inputSummary(output.getInputSummary())
                         .outputSummary(output.getOutputSummary())
                         .influenceDescription(source + " output provided context that shaped "
-                                + output.getAgentName() + "'s analysis and output")
+                                + output.getAgentName() + "'s analysis")
                         .build())
                 .collect(Collectors.toList());
     }
@@ -132,9 +197,9 @@ public class MeetingOrchestrationService {
                     .overallConfidence(confidence)
                     .build());
         } catch (Exception e) {
-            log.error("Failed to parse final synthesis JSON: {}", e.getMessage());
+            log.error("[Meeting {}] Failed to parse final synthesis JSON: {}", meetingId, e.getMessage());
             String fallback = "{\"executiveBrief\":\"Meeting preparation complete.\","
-                    + "\"overallConfidenceScore\":0.5,\"confidenceScore\":0.5}";
+                    + "\"overallConfidenceScore\":0.5,\"confidenceScore\":0.5,\"influencedBy\":[]}";
             return finalReportRepository.save(FinalReport.builder()
                     .meetingRequestId(meetingId)
                     .reportPayload(fallback)
@@ -157,10 +222,10 @@ public class MeetingOrchestrationService {
         );
     }
 
-    // Wraps a plain text summary into a minimal JSONB-compatible object
-    private String buildInputPayload(String inputSummary) {
+    private String wrapSummary(String summary) {
         try {
-            return objectMapper.writeValueAsString(Map.of("summary", inputSummary != null ? inputSummary : ""));
+            return objectMapper.writeValueAsString(
+                    Map.of("summary", summary != null ? summary : ""));
         } catch (Exception e) {
             return "{\"summary\":\"\"}";
         }
