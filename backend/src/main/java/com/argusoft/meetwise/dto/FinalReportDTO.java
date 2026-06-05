@@ -2,7 +2,6 @@ package com.argusoft.meetwise.dto;
 
 import com.argusoft.meetwise.entity.FinalReport;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.util.Map;

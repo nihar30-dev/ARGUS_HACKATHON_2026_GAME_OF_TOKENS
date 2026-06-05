@@ -147,6 +147,7 @@ public class CriticValidatorAgent implements Agent {
         }
     }
 
+    @SafeVarargs
     private double computeOverall(Map<String, Object>... outputs) {
         double sum = 0;
         int count = 0;
