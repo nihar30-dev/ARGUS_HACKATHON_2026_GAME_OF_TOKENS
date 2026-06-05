@@ -18,8 +18,8 @@ public class AgentTrace {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "session_id", nullable = false)
-    private UUID sessionId;
+    @Column(name = "meeting_request_id", nullable = false)
+    private UUID meetingRequestId;
 
     @Column(name = "source_agent", nullable = false)
     private String sourceAgent;
@@ -36,7 +36,7 @@ public class AgentTrace {
     @Column(name = "influence_description", columnDefinition = "TEXT")
     private String influenceDescription;
 
-    @Column(nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
-    private LocalDateTime timestamp = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now();
 }

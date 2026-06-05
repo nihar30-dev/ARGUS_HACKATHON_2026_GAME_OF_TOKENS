@@ -7,5 +7,5 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface FinalReportRepository extends JpaRepository<FinalReport, UUID> {
-    Optional<FinalReport> findBySessionId(UUID sessionId);
+    Optional<FinalReport> findByMeetingRequestId(UUID meetingRequestId);
 }

@@ -7,5 +7,5 @@ import java.util.List;
 import java.util.UUID;
 
 public interface AgentRunRepository extends JpaRepository<AgentRun, UUID> {
-    List<AgentRun> findBySessionIdOrderByExecutionOrderIndexAsc(UUID sessionId);
+    List<AgentRun> findByMeetingRequestIdOrderByExecutionOrderAsc(UUID meetingRequestId);
 }

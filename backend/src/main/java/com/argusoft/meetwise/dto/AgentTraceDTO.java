@@ -7,20 +7,20 @@ import java.util.UUID;
 
 public record AgentTraceDTO(
         UUID id,
-        UUID sessionId,
+        UUID meetingRequestId,
         String sourceAgent,
         String targetAgent,
         String inputSummary,
         String outputSummary,
         String influenceDescription,
-        LocalDateTime timestamp
+        LocalDateTime createdAt
 ) {
     public static AgentTraceDTO from(AgentTrace trace) {
         return new AgentTraceDTO(
-                trace.getId(), trace.getSessionId(),
+                trace.getId(), trace.getMeetingRequestId(),
                 trace.getSourceAgent(), trace.getTargetAgent(),
                 trace.getInputSummary(), trace.getOutputSummary(),
-                trace.getInfluenceDescription(), trace.getTimestamp()
+                trace.getInfluenceDescription(), trace.getCreatedAt()
         );
     }
 }

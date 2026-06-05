@@ -22,38 +22,33 @@ public class MeetingController {
     public ResponseEntity<MeetingSessionResponseDTO> createMeeting(
             @Valid @RequestBody MeetingRequestDTO requestDTO) {
         log.info("New meeting request for: {}", requestDTO.organizationName());
-        MeetingSessionResponseDTO response = orchestrationService.orchestrate(requestDTO);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(orchestrationService.orchestrate(requestDTO));
     }
 
     @PostMapping("/demo")
     public ResponseEntity<MeetingSessionResponseDTO> runDemo() {
-        log.info("Demo mode meeting request triggered");
+        log.info("Demo mode triggered");
         MeetingRequestDTO demo = new MeetingRequestDTO(
                 "Apollo Hospitals",
-                "Pitch our AI-powered clinical workflow automation platform",
-                "A SaaS platform that automates clinical documentation, reduces nurse workload by 40%, and integrates with existing HIS/EMR systems via HL7 FHIR APIs.",
-                "CTO"
+                "Discuss MEDplat digital health platform partnership",
+                "MEDplat is a digital health platform connecting patients, doctors, and hospitals through AI-powered diagnostics, telemedicine, and clinical workflow automation via HL7 FHIR APIs.",
+                "CEO"
         );
-        MeetingSessionResponseDTO response = orchestrationService.orchestrate(demo);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(orchestrationService.orchestrate(demo));
     }
 
-    @GetMapping("/{sessionId}")
-    public ResponseEntity<MeetingSessionResponseDTO> getSession(
-            @PathVariable UUID sessionId) {
-        return ResponseEntity.ok(orchestrationService.getSession(sessionId));
+    @GetMapping("/{meetingId}")
+    public ResponseEntity<MeetingSessionResponseDTO> getSession(@PathVariable UUID meetingId) {
+        return ResponseEntity.ok(orchestrationService.getSession(meetingId));
     }
 
-    @GetMapping("/{sessionId}/traces")
-    public ResponseEntity<?> getTraces(@PathVariable UUID sessionId) {
-        MeetingSessionResponseDTO session = orchestrationService.getSession(sessionId);
-        return ResponseEntity.ok(session.traces());
+    @GetMapping("/{meetingId}/traces")
+    public ResponseEntity<?> getTraces(@PathVariable UUID meetingId) {
+        return ResponseEntity.ok(orchestrationService.getSession(meetingId).traces());
     }
 
-    @GetMapping("/{sessionId}/report")
-    public ResponseEntity<?> getReport(@PathVariable UUID sessionId) {
-        MeetingSessionResponseDTO session = orchestrationService.getSession(sessionId);
-        return ResponseEntity.ok(session.finalReport());
+    @GetMapping("/{meetingId}/report")
+    public ResponseEntity<?> getReport(@PathVariable UUID meetingId) {
+        return ResponseEntity.ok(orchestrationService.getSession(meetingId).finalReport());
     }
 }

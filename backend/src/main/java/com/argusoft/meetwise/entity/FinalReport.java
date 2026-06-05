@@ -18,31 +18,17 @@ public class FinalReport {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "session_id", nullable = false, unique = true)
-    private UUID sessionId;
-
-    @Column(name = "meeting_request_id", nullable = false)
+    @Column(name = "meeting_request_id", nullable = false, unique = true)
     private UUID meetingRequestId;
 
-    @Column(name = "executive_brief", columnDefinition = "TEXT")
-    private String executiveBrief;
-
-    @Column(name = "conversation_flow_json", columnDefinition = "TEXT")
-    private String conversationFlowJson;
-
-    @Column(name = "questions_json", columnDefinition = "TEXT")
-    private String questionsJson;
-
-    @Column(name = "objection_responses_json", columnDefinition = "TEXT")
-    private String objectionResponsesJson;
-
-    @Column(name = "next_steps_json", columnDefinition = "TEXT")
-    private String nextStepsJson;
+    // Full FinalSynthesisAgent JSON stored as JSONB for queryability
+    @Column(name = "report_payload", nullable = false, columnDefinition = "jsonb")
+    private String reportPayload;
 
     @Column(name = "overall_confidence", nullable = false)
     private double overallConfidence;
 
-    @Column(name = "generated_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
-    private LocalDateTime generatedAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now();
 }

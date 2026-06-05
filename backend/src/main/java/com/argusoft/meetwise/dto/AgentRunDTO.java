@@ -9,26 +9,26 @@ import java.util.UUID;
 
 public record AgentRunDTO(
         UUID id,
-        UUID sessionId,
+        UUID meetingRequestId,
         String agentName,
-        int executionOrderIndex,
-        String inputJson,
-        String outputJson,
+        int executionOrder,
+        String inputPayload,
+        String outputPayload,
         double confidenceScore,
         List<String> influencedBy,
         boolean usedGemini,
         long executionMs,
-        LocalDateTime executedAt
+        LocalDateTime createdAt
 ) {
     public static AgentRunDTO from(AgentRun run) {
         List<String> influenced = (run.getInfluencedBy() == null || run.getInfluencedBy().isBlank())
                 ? List.of()
                 : Arrays.asList(run.getInfluencedBy().split(","));
         return new AgentRunDTO(
-                run.getId(), run.getSessionId(), run.getAgentName(),
-                run.getExecutionOrderIndex(), run.getInputJson(), run.getOutputJson(),
+                run.getId(), run.getMeetingRequestId(), run.getAgentName(),
+                run.getExecutionOrder(), run.getInputPayload(), run.getOutputPayload(),
                 run.getConfidenceScore(), influenced, run.isUsedGemini(),
-                run.getExecutionMs(), run.getExecutedAt()
+                run.getExecutionMs(), run.getCreatedAt()
         );
     }
 }

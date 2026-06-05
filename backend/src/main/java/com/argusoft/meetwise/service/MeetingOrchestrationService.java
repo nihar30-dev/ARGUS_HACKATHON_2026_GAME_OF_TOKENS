@@ -13,7 +13,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,17 +30,15 @@ public class MeetingOrchestrationService {
 
     @Transactional
     public MeetingSessionResponseDTO orchestrate(MeetingRequestDTO dto) {
-        UUID sessionId = UUID.randomUUID();
-
         MeetingRequest meeting = meetingRequestRepository.save(MeetingRequest.builder()
-                .sessionId(sessionId)
                 .organizationName(dto.organizationName())
+                .stakeholderRole(dto.stakeholderRole())
                 .meetingObjective(dto.meetingObjective())
                 .offeringDescription(dto.offeringDescription())
-                .stakeholderRole(dto.stakeholderRole())
                 .status("RUNNING")
                 .build());
 
+        UUID meetingId = meeting.getId();
         AgentContext context = new AgentContext(meeting);
         List<AgentRun> runs = new ArrayList<>();
         List<AgentTrace> traces = new ArrayList<>();
@@ -52,7 +49,7 @@ public class MeetingOrchestrationService {
 
         try {
             for (Agent agent : pipeline) {
-                log.info("[Session {}] Running {} (order {})", sessionId, agent.getName(), agent.getOrder());
+                log.info("[Meeting {}] Running {} (order {})", meetingId, agent.getName(), agent.getOrder());
                 long start = System.currentTimeMillis();
 
                 AgentOutput output = agent.execute(context);
@@ -60,48 +57,47 @@ public class MeetingOrchestrationService {
 
                 context.putOutput(agent.getName(), output.getOutputJson());
 
-                AgentRun run = agentRunRepository.save(toAgentRun(sessionId, output, executionMs));
+                AgentRun run = agentRunRepository.save(toAgentRun(meetingId, output, executionMs));
                 runs.add(run);
 
-                List<AgentTrace> agentTraces = buildTraces(sessionId, output);
+                List<AgentTrace> agentTraces = buildTraces(meetingId, output);
                 traces.addAll(agentTraceRepository.saveAll(agentTraces));
 
-                log.info("[Session {}] {} completed in {}ms, confidence={}", sessionId,
+                log.info("[Meeting {}] {} done in {}ms, confidence={}", meetingId,
                         agent.getName(), executionMs, output.getConfidenceScore());
             }
 
             meeting.setStatus("COMPLETED");
             meetingRequestRepository.save(meeting);
 
-            FinalReport report = saveFinalReport(sessionId, meeting.getId(),
-                    context.getOutput("FinalSynthesisAgent"));
-
-            return buildResponse(sessionId, meeting, runs, traces, report);
+            FinalReport report = saveFinalReport(meetingId, context.getOutput("FinalSynthesisAgent"));
+            return buildResponse(meeting, runs, traces, report);
 
         } catch (Exception e) {
-            log.error("[Session {}] Orchestration failed: {}", sessionId, e.getMessage(), e);
+            log.error("[Meeting {}] Orchestration failed: {}", meetingId, e.getMessage(), e);
             meeting.setStatus("FAILED");
             meetingRequestRepository.save(meeting);
             throw new MeetwiseException("Orchestration failed: " + e.getMessage(), e);
         }
     }
 
-    public MeetingSessionResponseDTO getSession(UUID sessionId) {
-        MeetingRequest meeting = meetingRequestRepository.findBySessionId(sessionId)
-                .orElseThrow(() -> new MeetwiseException("Session not found: " + sessionId));
-        List<AgentRun> runs = agentRunRepository.findBySessionIdOrderByExecutionOrderIndexAsc(sessionId);
-        List<AgentTrace> traces = agentTraceRepository.findBySessionIdOrderByTimestampAsc(sessionId);
-        FinalReport report = finalReportRepository.findBySessionId(sessionId).orElse(null);
-        return buildResponse(sessionId, meeting, runs, traces, report);
+    public MeetingSessionResponseDTO getSession(UUID meetingId) {
+        MeetingRequest meeting = meetingRequestRepository.findById(meetingId)
+                .orElseThrow(() -> new MeetwiseException("Meeting not found: " + meetingId));
+        List<AgentRun> runs = agentRunRepository.findByMeetingRequestIdOrderByExecutionOrderAsc(meetingId);
+        List<AgentTrace> traces = agentTraceRepository.findByMeetingRequestIdOrderByCreatedAtAsc(meetingId);
+        FinalReport report = finalReportRepository.findByMeetingRequestId(meetingId).orElse(null);
+        return buildResponse(meeting, runs, traces, report);
     }
 
-    private AgentRun toAgentRun(UUID sessionId, AgentOutput output, long executionMs) {
+    private AgentRun toAgentRun(UUID meetingId, AgentOutput output, long executionMs) {
+        String inputPayload = buildInputPayload(output.getInputSummary());
         return AgentRun.builder()
-                .sessionId(sessionId)
+                .meetingRequestId(meetingId)
                 .agentName(output.getAgentName())
-                .executionOrderIndex(getOrder(output.getAgentName()))
-                .inputJson(output.getInputSummary())
-                .outputJson(output.getOutputJson())
+                .executionOrder(getOrder(output.getAgentName()))
+                .inputPayload(inputPayload)
+                .outputPayload(output.getOutputJson())
                 .confidenceScore(output.getConfidenceScore())
                 .influencedBy(output.getInfluencedBy() == null ? ""
                         : String.join(",", output.getInfluencedBy()))
@@ -110,59 +106,64 @@ public class MeetingOrchestrationService {
                 .build();
     }
 
-    private List<AgentTrace> buildTraces(UUID sessionId, AgentOutput output) {
-        if (output.getInfluencedBy() == null) return List.of();
+    private List<AgentTrace> buildTraces(UUID meetingId, AgentOutput output) {
+        if (output.getInfluencedBy() == null || output.getInfluencedBy().isEmpty()) return List.of();
         return output.getInfluencedBy().stream()
                 .map(source -> AgentTrace.builder()
-                        .sessionId(sessionId)
+                        .meetingRequestId(meetingId)
                         .sourceAgent(source)
                         .targetAgent(output.getAgentName())
                         .inputSummary(output.getInputSummary())
                         .outputSummary(output.getOutputSummary())
                         .influenceDescription(source + " output provided context that shaped "
                                 + output.getAgentName() + "'s analysis and output")
-                        .timestamp(LocalDateTime.now())
                         .build())
                 .collect(Collectors.toList());
     }
 
-    private FinalReport saveFinalReport(UUID sessionId, UUID meetingId, String finalJson) {
+    private FinalReport saveFinalReport(UUID meetingId, String finalJson) {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> data = objectMapper.readValue(finalJson, Map.class);
+            double confidence = toDouble(data.get("overallConfidenceScore"));
             return finalReportRepository.save(FinalReport.builder()
-                    .sessionId(sessionId)
                     .meetingRequestId(meetingId)
-                    .executiveBrief(str(data.get("executiveBrief")))
-                    .conversationFlowJson(toJson(data.get("conversationFlow")))
-                    .questionsJson(toJson(data.get("topQuestions")))
-                    .objectionResponsesJson(toJson(data.get("objectionResponses")))
-                    .nextStepsJson(toJson(data.get("nextSteps")))
-                    .overallConfidence(toDouble(data.get("overallConfidenceScore")))
+                    .reportPayload(finalJson)
+                    .overallConfidence(confidence)
                     .build());
         } catch (Exception e) {
             log.error("Failed to parse final synthesis JSON: {}", e.getMessage());
+            String fallback = "{\"executiveBrief\":\"Meeting preparation complete.\","
+                    + "\"overallConfidenceScore\":0.5,\"confidenceScore\":0.5}";
             return finalReportRepository.save(FinalReport.builder()
-                    .sessionId(sessionId)
                     .meetingRequestId(meetingId)
-                    .executiveBrief("Meeting preparation completed. See agent outputs for full details.")
+                    .reportPayload(fallback)
                     .overallConfidence(0.5)
                     .build());
         }
     }
 
-    private MeetingSessionResponseDTO buildResponse(UUID sessionId, MeetingRequest meeting,
-                                                     List<AgentRun> runs, List<AgentTrace> traces,
+    private MeetingSessionResponseDTO buildResponse(MeetingRequest meeting,
+                                                     List<AgentRun> runs,
+                                                     List<AgentTrace> traces,
                                                      FinalReport report) {
         return new MeetingSessionResponseDTO(
-                sessionId,
                 meeting.getId(),
                 meeting.getOrganizationName(),
                 meeting.getStatus(),
                 runs.stream().map(AgentRunDTO::from).collect(Collectors.toList()),
                 traces.stream().map(AgentTraceDTO::from).collect(Collectors.toList()),
-                report != null ? FinalReportDTO.from(report) : null
+                report != null ? FinalReportDTO.from(report, objectMapper) : null
         );
+    }
+
+    // Wraps a plain text summary into a minimal JSONB-compatible object
+    private String buildInputPayload(String inputSummary) {
+        try {
+            return objectMapper.writeValueAsString(Map.of("summary", inputSummary != null ? inputSummary : ""));
+        } catch (Exception e) {
+            return "{\"summary\":\"\"}";
+        }
     }
 
     private int getOrder(String agentName) {
@@ -177,16 +178,9 @@ public class MeetingOrchestrationService {
         };
     }
 
-    private String str(Object o) { return o == null ? null : o.toString(); }
-
     private double toDouble(Object o) {
         if (o == null) return 0.5;
         if (o instanceof Number n) return n.doubleValue();
         try { return Double.parseDouble(o.toString()); } catch (Exception e) { return 0.5; }
-    }
-
-    private String toJson(Object o) {
-        if (o == null) return null;
-        try { return objectMapper.writeValueAsString(o); } catch (Exception e) { return null; }
     }
 }

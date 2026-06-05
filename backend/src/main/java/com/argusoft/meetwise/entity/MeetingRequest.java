@@ -1,10 +1,7 @@
 package com.argusoft.meetwise.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import lombok.*;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -21,11 +18,11 @@ public class MeetingRequest {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "session_id")
-    private UUID sessionId;
-
     @Column(name = "organization_name", nullable = false)
     private String organizationName;
+
+    @Column(name = "stakeholder_role", nullable = false)
+    private String stakeholderRole;
 
     @Column(name = "meeting_objective", nullable = false, columnDefinition = "TEXT")
     private String meetingObjective;
@@ -33,14 +30,11 @@ public class MeetingRequest {
     @Column(name = "offering_description", nullable = false, columnDefinition = "TEXT")
     private String offeringDescription;
 
-    @Column(name = "stakeholder_role", nullable = false)
-    private String stakeholderRole;
-
     @Column(nullable = false)
     @Builder.Default
     private String status = "PENDING";
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 

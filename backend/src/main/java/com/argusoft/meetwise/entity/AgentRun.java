@@ -18,20 +18,21 @@ public class AgentRun {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "session_id", nullable = false)
-    private UUID sessionId;
+    @Column(name = "meeting_request_id", nullable = false)
+    private UUID meetingRequestId;
 
     @Column(name = "agent_name", nullable = false)
     private String agentName;
 
-    @Column(name = "execution_order_index", nullable = false)
-    private int executionOrderIndex;
+    @Column(name = "execution_order", nullable = false)
+    private int executionOrder;
 
-    @Column(name = "input_json", columnDefinition = "TEXT")
-    private String inputJson;
+    // JSONB — stored as serialised JSON string; PostgreSQL type handles querying
+    @Column(name = "input_payload", columnDefinition = "jsonb")
+    private String inputPayload;
 
-    @Column(name = "output_json", nullable = false, columnDefinition = "TEXT")
-    private String outputJson;
+    @Column(name = "output_payload", nullable = false, columnDefinition = "jsonb")
+    private String outputPayload;
 
     @Column(name = "confidence_score", nullable = false)
     private double confidenceScore;
@@ -45,7 +46,7 @@ public class AgentRun {
     @Column(name = "execution_ms", nullable = false)
     private long executionMs;
 
-    @Column(name = "executed_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
-    private LocalDateTime executedAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now();
 }

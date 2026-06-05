@@ -7,5 +7,5 @@ import java.util.List;
 import java.util.UUID;
 
 public interface AgentTraceRepository extends JpaRepository<AgentTrace, UUID> {
-    List<AgentTrace> findBySessionIdOrderByTimestampAsc(UUID sessionId);
+    List<AgentTrace> findByMeetingRequestIdOrderByCreatedAtAsc(UUID meetingRequestId);
 }
