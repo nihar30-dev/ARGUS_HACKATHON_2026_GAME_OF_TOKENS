@@ -1,0 +1,20 @@
+{
+  "agent": "EngagementStrategyAgent",
+  "meetingGoal": "Secure a 3-hospital pilot agreement and schedule a technical deep-dive within 30 days",
+  "positioning": "Position as the only platform with a pre-built Astreya HIS connector — eliminating the integration risk that killed previous automation initiatives",
+  "valueProposition": "Cut clinical documentation time by 40% in 90 days — guaranteed by contractual outcome SLA, with zero procurement barrier via a free 30-day PoC.",
+  "successCriteria": [
+    "CTO agrees to a technical deep-dive session with IT team",
+    "Pilot scope defined: 3 hospitals, 90-day timeline, 3 measurable KPIs",
+    "IT team introductions scheduled before end of meeting"
+  ],
+  "openingApproach": "Lead with the Astreya integration story — acknowledge the pain of custom HIS connectors upfront and show the connector live in the first 5 minutes",
+  "keyMessages": [
+    "Pre-built Astreya connector — zero custom development required, 2-week deployment",
+    "40% documentation time reduction proven at 2 comparable Indian hospital chains",
+    "On-premise and hybrid deployment options — full data sovereignty guaranteed",
+    "Outcome-based PoC with contractual SLA — we take on the delivery risk"
+  ],
+  "confidenceScore": 0.88,
+  "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent"]
+}
