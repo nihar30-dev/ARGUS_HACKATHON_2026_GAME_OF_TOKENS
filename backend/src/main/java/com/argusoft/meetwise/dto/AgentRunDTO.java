@@ -11,11 +11,14 @@ public record AgentRunDTO(
         UUID id,
         UUID meetingRequestId,
         String agentName,
+        String agentType,
+        String status,
         int executionOrder,
         String inputPayload,
         String outputPayload,
         double confidenceScore,
         List<String> influencedBy,
+        String traceSummary,
         boolean usedGemini,
         long executionMs,
         LocalDateTime createdAt
@@ -26,8 +29,10 @@ public record AgentRunDTO(
                 : Arrays.asList(run.getInfluencedBy().split(","));
         return new AgentRunDTO(
                 run.getId(), run.getMeetingRequestId(), run.getAgentName(),
+                run.getAgentType(), run.getAgentStatus() != null ? run.getAgentStatus() : "SUCCESS",
                 run.getExecutionOrder(), run.getInputPayload(), run.getOutputPayload(),
-                run.getConfidenceScore(), influenced, run.isUsedGemini(),
+                run.getConfidenceScore(), influenced,
+                run.getTraceSummary(), run.isUsedGemini(),
                 run.getExecutionMs(), run.getCreatedAt()
         );
     }

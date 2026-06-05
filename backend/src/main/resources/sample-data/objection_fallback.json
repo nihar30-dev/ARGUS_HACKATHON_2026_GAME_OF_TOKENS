@@ -3,33 +3,41 @@
   "objections": [
     {
       "objection": "We already have an in-house team building automation on top of Astreya — why buy external?",
-      "likelihood": 0.92,
-      "category": "competition",
-      "counterResponse": "Our connector took an 18-month, 6-person engineering effort. We can deploy it in your environment in 2 weeks. Your team's time is far more valuable spent on clinical innovation than HIS plumbing. We can show you a detailed build vs. buy analysis."
+      "risk_level": 0.92,
+      "why_it_may_arise": "Apollo has a dedicated digital unit (HealthCo) with engineering resources — in-house build protects roadmap control",
+      "recommended_response": "Our connector took an 18-month, 6-person engineering effort. We deploy in 2 weeks. Your team's time is far more valuable on clinical innovation than HIS plumbing. We can show you a detailed build-vs-buy analysis.",
+      "evidence_needed": "Build cost analysis comparing internal effort vs. deployment timeline"
     },
     {
-      "objection": "Patient data cannot leave our on-premise environment — cloud SaaS is a non-starter for us.",
-      "likelihood": 0.87,
-      "category": "technical",
-      "counterResponse": "We support fully air-gapped on-premise deployment. Three of our current clients operate under the same compliance posture. We can share our security architecture document and arrange a call with our CISO today."
+      "objection": "Patient data cannot leave our on-premise environment — cloud SaaS is a non-starter.",
+      "risk_level": 0.87,
+      "why_it_may_arise": "Healthcare data sovereignty is a hard regulatory and board-level requirement in India",
+      "recommended_response": "We support fully air-gapped on-premise deployment. Three current clients operate under identical compliance posture. We can share our security architecture and arrange a CISO-level call today.",
+      "evidence_needed": "Security architecture document and on-premise deployment case study"
     },
     {
-      "objection": "We had a failed automation pilot with a vendor 18 months ago — the board is skeptical of another attempt.",
-      "likelihood": 0.75,
-      "category": "trust",
-      "counterResponse": "We've specifically studied those failure patterns. Our pilot structure is designed to produce measurable, verifiable results in 30 days — not 6 months. We structure the PoC with outcome-based pricing so we absorb the delivery risk, not you."
+      "objection": "We had a failed automation pilot with a vendor 18 months ago — the board is skeptical.",
+      "risk_level": 0.80,
+      "why_it_may_arise": "Past failure creates institutional caution; board approval for another pilot will require de-risking",
+      "recommended_response": "We've studied those failure patterns specifically. Our pilot structure is designed to produce measurable, verifiable results in 30 days — not 6 months. Outcome-based pricing means we absorb delivery risk, not you.",
+      "evidence_needed": "Post-mortem comparison of past failed pilots vs. our PoC structure"
     },
     {
       "objection": "Our budget cycle ends in Q3 and procurement takes a minimum of 4 months.",
-      "likelihood": 0.70,
-      "category": "timing",
-      "counterResponse": "Our zero-cost 30-day PoC does not require any procurement approval. Once the results are proven at one hospital, formal procurement runs in parallel with the extended pilot, so you're not blocked."
+      "risk_level": 0.70,
+      "why_it_may_arise": "Enterprise procurement timelines in Indian healthcare routinely exceed 4 months",
+      "recommended_response": "Our zero-cost 30-day PoC requires no procurement approval. Once results are proven at one hospital, formal procurement runs in parallel with the extended pilot — you're not blocked.",
+      "evidence_needed": "Reference customer example of procurement-parallel pilot model"
     }
   ],
-  "topRisks": [
-    "Internal build team may resist an external vendor solution as a threat to their roadmap",
+  "strategy_adjustments": [
+    "Lead with build-vs-buy ROI data to defuse in-house team resistance immediately",
+    "Bring on-premise security architecture deck as a leave-behind — make data sovereignty a non-issue before it's raised"
+  ],
+  "red_flags": [
+    "In-house automation team may resist external vendor as a threat to their roadmap",
     "Astreya API rate limits and undocumented endpoints may extend the 2-week integration estimate"
   ],
-  "confidenceScore": 0.84,
+  "confidence_score": 0.84,
   "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent", "EngagementStrategyAgent"]
 }

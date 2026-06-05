@@ -71,9 +71,37 @@ public class GeminiService {
             Map<?, ?> content = (Map<?, ?>) candidate.get("content");
             List<?> parts = (List<?>) content.get("parts");
             Map<?, ?> part = (Map<?, ?>) parts.get(0);
-            return (String) part.get("text");
+            String text = (String) part.get("text");
+            return stripMarkdownFences(text);
         } catch (Exception e) {
             throw new MeetwiseException("Failed to parse Gemini response", e);
         }
+    }
+
+    /**
+     * Gemini 2.5 Flash sometimes wraps JSON in ```json ... ``` even when
+     * responseMimeType=application/json is requested. Strip fences and extract
+     * the outermost JSON object so downstream isValidJson() checks pass.
+     */
+    private String stripMarkdownFences(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+        // Strip ```json ... ``` or ``` ... ``` wrappers
+        if (t.startsWith("```")) {
+            int firstNewline = t.indexOf('\n');
+            if (firstNewline != -1) {
+                t = t.substring(firstNewline + 1);
+            }
+            if (t.endsWith("```")) {
+                t = t.substring(0, t.lastIndexOf("```")).trim();
+            }
+        }
+        // Extract from first { to last } as a safety net
+        int start = t.indexOf('{');
+        int end   = t.lastIndexOf('}');
+        if (start != -1 && end != -1 && end > start) {
+            t = t.substring(start, end + 1);
+        }
+        return t;
     }
 }

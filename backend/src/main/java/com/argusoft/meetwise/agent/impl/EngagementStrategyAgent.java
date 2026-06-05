@@ -1,8 +1,9 @@
 package com.argusoft.meetwise.agent.impl;
 
-import com.argusoft.meetwise.agent.Agent;
 import com.argusoft.meetwise.agent.AgentContext;
-import com.argusoft.meetwise.agent.AgentOutput;
+import com.argusoft.meetwise.agent.AgentResult;
+import com.argusoft.meetwise.agent.BaseAgent;
+import com.argusoft.meetwise.agent.core.AgentType;
 import com.argusoft.meetwise.service.FallbackDataService;
 import com.argusoft.meetwise.service.GeminiService;
 import lombok.RequiredArgsConstructor;
@@ -12,10 +13,15 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * Gemini-based agent (order 3).
+ * Builds the initial meeting engagement strategy from Research + Persona outputs.
+ * Refinement is handled by the dedicated StrategyRefinementAgent (order 6).
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class EngagementStrategyAgent implements Agent {
+public class EngagementStrategyAgent extends BaseAgent {
 
     private final GeminiService geminiService;
     private final FallbackDataService fallbackDataService;
@@ -23,17 +29,20 @@ public class EngagementStrategyAgent implements Agent {
     @Value("${app.demo-mode:false}")
     private boolean demoMode;
 
-    @Override
-    public String getName() { return "EngagementStrategyAgent"; }
+    @Override public String getName()         { return "EngagementStrategyAgent"; }
+    @Override public int    getOrder()        { return 3; }
+    @Override public AgentType getAgentType() { return AgentType.GEMINI_BASED; }
 
     @Override
-    public int getOrder() { return 3; }
-
-    @Override
-    public AgentOutput execute(AgentContext context) {
-        String researchJson = context.getOutput("OrganizationResearchAgent");
-        String personaJson  = context.getOutput("StakeholderPersonaAgent");
+    public AgentResult execute(AgentContext context) {
+        String researchJson = getPreviousOutputJson(context, "OrganizationResearchAgent");
+        String personaJson  = getPreviousOutputJson(context, "StakeholderPersonaAgent");
         String offering     = context.getMeetingRequest().getOfferingDescription();
+
+        addTrace(context, "OrganizationResearchAgent", "INFLUENCE",
+                "EngagementStrategyAgent used organization pain points and priorities to build positioning");
+        addTrace(context, "StakeholderPersonaAgent", "INFLUENCE",
+                "EngagementStrategyAgent tailored strategy to stakeholder decision lens and communication style");
 
         String outputJson;
         boolean usedGemini = false;
@@ -42,24 +51,31 @@ public class EngagementStrategyAgent implements Agent {
             outputJson = fallbackDataService.loadFallback(getName());
         } else {
             try {
-                String prompt = buildPrompt(researchJson, personaJson, offering);
-                outputJson = geminiService.generate(prompt);
-                usedGemini = true;
+                String raw = geminiService.generate(buildPrompt(researchJson, personaJson, offering));
+                if (isValidJson(raw)) {
+                    outputJson = raw;
+                    usedGemini = true;
+                } else {
+                    log.warn("[{}] Gemini returned invalid JSON, using fallback", getName());
+                    outputJson = fallbackDataService.loadFallback(getName());
+                }
             } catch (Exception e) {
                 log.warn("[{}] Gemini failed ({}), using fallback", getName(), e.getMessage());
                 outputJson = fallbackDataService.loadFallback(getName());
             }
         }
 
-        return AgentOutput.builder()
-                .agentName(getName())
-                .outputJson(outputJson)
-                .confidenceScore(extractConfidence(outputJson))
-                .influencedBy(List.of("OrganizationResearchAgent", "StakeholderPersonaAgent"))
-                .usedGemini(usedGemini)
-                .inputSummary("Research + Persona outputs for " + context.getMeetingRequest().getOrganizationName())
-                .outputSummary("Meeting strategy with positioning and value proposition")
-                .build();
+        AgentResult result = success(
+                outputJson,
+                extractConfidence(outputJson),
+                List.of("OrganizationResearchAgent", "StakeholderPersonaAgent"),
+                usedGemini,
+                "Research + Persona for " + context.getMeetingRequest().getOrganizationName(),
+                "Initial meeting strategy with positioning and value proposition");
+
+        context.putResult(getName(), result);
+        log.info("[{}] Strategy built, confidence={}", getName(), result.getConfidenceScore());
+        return result;
     }
 
     private String buildPrompt(String research, String persona, String offering) {
@@ -75,32 +91,19 @@ public class EngagementStrategyAgent implements Agent {
                 Our Offering:
                 %s
 
-                Return a JSON object (raw JSON, no markdown):
+                Return raw JSON only (no markdown):
                 {
                   "agent": "EngagementStrategyAgent",
-                  "meetingGoal": "specific goal for this meeting",
-                  "positioning": "how to position the offering for this stakeholder",
-                  "valueProposition": "tailored 1-sentence value proposition",
-                  "successCriteria": ["criterion1", "criterion2"],
-                  "openingApproach": "how to open the meeting",
-                  "keyMessages": ["message1", "message2", "message3"],
-                  "confidenceScore": 0.88,
+                  "meeting_goal": "specific goal for this meeting",
+                  "primary_positioning": "how to position the offering for this stakeholder",
+                  "value_proposition": "tailored 1-2 sentence value proposition with specific differentiators",
+                  "partnership_angles": ["angle1", "angle2"],
+                  "success_criteria": ["criterion1", "criterion2", "criterion3"],
+                  "recommended_next_step": "the single most important next action to propose",
+                  "key_messages": ["message1", "message2", "message3"],
+                  "confidence_score": 0.88,
                   "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent"]
                 }
                 """.formatted(research, persona, offering);
-    }
-
-    private double extractConfidence(String json) {
-        try {
-            int idx = json.indexOf("\"confidenceScore\"");
-            if (idx == -1) return 0.5;
-            int colon = json.indexOf(":", idx);
-            int comma = json.indexOf(",", colon);
-            int brace = json.indexOf("}", colon);
-            int end = Math.min(comma == -1 ? brace : comma, brace == -1 ? comma : brace);
-            return Double.parseDouble(json.substring(colon + 1, end).trim());
-        } catch (Exception e) {
-            return 0.5;
-        }
     }
 }

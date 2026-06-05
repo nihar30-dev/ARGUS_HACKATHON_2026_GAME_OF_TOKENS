@@ -1,73 +1,82 @@
 {
   "agent": "FinalSynthesisAgent",
-  "executiveBrief": "Apollo's CTO is a technically rigorous decision-maker whose primary concern is integration feasibility and data sovereignty. The highest-probability path to a pilot is leading with the pre-built Astreya connector, directly addressing the in-house build team dynamic, and offering a zero-cost 30-day PoC that bypasses procurement delays entirely.",
-  "conversationFlow": [
+  "executive_brief": "Apollo's CTO is a technically rigorous decision-maker whose primary concern is integration feasibility and data sovereignty. The highest-probability path to a pilot is leading with the pre-built Astreya connector — directly addressing the in-house build team dynamic — and offering a zero-cost 30-day PoC with outcome-based SLA. The refined strategy incorporates critic-flagged gaps: the top objection (in-house build) is now pre-empted in key messages, and the value proposition includes specific contractual risk-transfer language.",
+  "meeting_objective": "Secure a 3-hospital pilot agreement and schedule a technical deep-dive within 30 days",
+  "recommended_positioning": "The only platform with a pre-built Astreya HIS connector — eliminating the integration risk that killed previous automation initiatives; resolves: Strategy key messages do not address the primary pain point from research; counters 'We already have an in-house team...' → Our connector took 18 months and a 6-person team to build; counters 'Patient data cannot leave...' → Fully air-gapped on-premise deployment supported",
+  "conversation_flow": [
     {
       "phase": "Opening",
       "duration": "5 min",
-      "approach": "Acknowledge the Astreya integration challenge directly. Open by showing the connector live on a test instance — remove the 'can it actually connect?' uncertainty in the first 3 minutes."
+      "approach": "Acknowledge the Astreya integration challenge directly — open by showing the connector live on a test instance. Remove the 'can it actually connect?' uncertainty in the first 3 minutes. Reference the in-house build team as a strength, not a threat."
     },
     {
       "phase": "Discovery",
       "duration": "10 min",
-      "approach": "Confirm the current documentation time burden with data. Ask about the in-house build team's roadmap and quantify their build cost vs. our deployment cost. Surface the data sovereignty requirement explicitly."
+      "approach": "Confirm current documentation time burden with data. Ask about the in-house build team's roadmap and quantify their build cost vs. our deployment cost. Surface the data sovereignty requirement explicitly. Ask the 3 questions prepared in advance."
     },
     {
       "phase": "Demonstration",
       "duration": "15 min",
-      "approach": "Live demo on the Astreya test instance showing the 40% documentation reduction metric. Reference a comparable Indian hospital chain by name. Show the on-premise deployment architecture diagram."
+      "approach": "Live demo on the Astreya test instance showing the 40% documentation reduction metric. Reference a comparable Indian hospital chain by name. Show the on-premise deployment architecture diagram. Address the previous failed pilot pattern proactively."
     },
     {
       "phase": "Objection Handling",
       "duration": "10 min",
-      "approach": "Address the in-house build objection with the build cost analysis. Show the security architecture for data sovereignty. Present the previous failed pilot post-mortem comparison to our PoC structure."
+      "approach": "Address the in-house build objection with the build cost analysis (changed due to critic flag: top objection was not in original key messages). Show the security architecture for data sovereignty. Present the previous failed pilot post-mortem comparison."
     },
     {
       "phase": "Close",
       "duration": "5 min",
-      "approach": "Propose a zero-cost 30-day PoC at one hospital. Ask the CTO to define 3 success criteria with you right now. Schedule the IT team technical deep-dive before leaving the room."
+      "approach": "Propose zero-cost 30-day PoC at one hospital. Ask the CTO to define 3 success criteria with you right now. Schedule the IT team technical deep-dive before leaving the room. Confirm no procurement approval required to start."
     }
   ],
-  "topQuestions": [
+  "questions_to_ask": [
     "What is the current status of your in-house automation roadmap on Astreya, and how many engineers are allocated to it?",
     "Which 3 hospitals would you consider for a controlled pilot — and what would make it an unambiguous success?",
     "What does your data sovereignty requirement look like in practice — on-premise only, private cloud, or hybrid?"
   ],
-  "objectionResponses": [
+  "objections_and_responses": [
     {
       "objection": "We already have an in-house team building on Astreya",
-      "response": "Our connector took 18 months and a 6-person team to build. We deploy in 2 weeks. We can show you a detailed build vs. buy cost analysis. Your team's time is better invested in clinical innovation."
+      "response": "Our connector took 18 months and a 6-person team to build. We deploy in 2 weeks. We can show you a detailed build-vs-buy cost analysis. Your team's time is better invested in clinical innovation.",
+      "risk_level": 0.92
     },
     {
       "objection": "Patient data cannot leave on-premise",
-      "response": "We support fully air-gapped on-premise deployment. Three current clients operate under identical compliance constraints. We can share our security architecture and arrange a CISO-level call today."
+      "response": "We support fully air-gapped on-premise deployment. Three current clients operate under identical compliance constraints. We can share our security architecture and arrange a CISO-level call today.",
+      "risk_level": 0.87
     },
     {
       "objection": "We had a failed pilot with another vendor",
-      "response": "30-day PoC with contractual outcome SLAs — we absorb the delivery risk. You define the success criteria. No procurement approval required to start."
+      "response": "30-day PoC with contractual outcome SLAs — we absorb the delivery risk. You define the success criteria. No procurement approval required to start.",
+      "risk_level": 0.80
     },
     {
       "objection": "Budget cycle and procurement timeline",
-      "response": "Zero-cost PoC starts immediately with no procurement. Formal procurement runs in parallel with the extended pilot once results are proven."
+      "response": "Zero-cost PoC starts immediately with no procurement. Formal procurement runs in parallel with the extended pilot once results are proven.",
+      "risk_level": 0.70
     }
   ],
-  "nextSteps": [
+  "next_steps": [
     "Share the Astreya connector technical specification document within 24 hours",
     "Schedule a 1-hour technical deep-dive with CTO and IT team lead within 1 week",
     "Define 3 measurable PoC success criteria and select pilot hospital together in that session"
   ],
-  "criticImprovementsApplied": [
-    "Added direct in-house build cost counter to the discovery phase questioning sequence",
-    "Added named reference customer mention to the demonstration phase",
-    "Included build cost analysis as a specific objection handling artifact in the close"
+  "refinements_applied": [
+    "Added in-house build counter-response to key messages — triggered by CriticValidatorAgent (top objection not in strategy)",
+    "Value proposition extended with contractual risk-transfer language — triggered by CriticValidatorAgent (too brief)",
+    "Positioning updated to resolve contradiction: pain point coverage gap — triggered by CriticValidatorAgent",
+    "Success criterion added to validate assumption about in-house team resistance — triggered by CriticValidatorAgent"
   ],
+  "readiness_score": 0.91,
+  "confidence_score": 0.91,
   "overallConfidenceScore": 0.91,
-  "confidenceScore": 0.91,
   "influencedBy": [
     "OrganizationResearchAgent",
     "StakeholderPersonaAgent",
     "EngagementStrategyAgent",
     "ObjectionPredictionAgent",
-    "CriticValidatorAgent"
+    "CriticValidatorAgent",
+    "StrategyRefinementAgent"
   ]
 }

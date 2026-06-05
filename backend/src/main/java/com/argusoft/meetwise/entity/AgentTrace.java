@@ -33,6 +33,9 @@ public class AgentTrace {
     @Column(name = "output_summary", columnDefinition = "TEXT")
     private String outputSummary;
 
+    @Column(name = "influence_type")
+    private String influenceType;
+
     @Column(name = "influence_description", columnDefinition = "TEXT")
     private String influenceDescription;
 

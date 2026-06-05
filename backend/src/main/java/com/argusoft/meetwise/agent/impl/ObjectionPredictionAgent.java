@@ -1,8 +1,9 @@
 package com.argusoft.meetwise.agent.impl;
 
-import com.argusoft.meetwise.agent.Agent;
 import com.argusoft.meetwise.agent.AgentContext;
-import com.argusoft.meetwise.agent.AgentOutput;
+import com.argusoft.meetwise.agent.AgentResult;
+import com.argusoft.meetwise.agent.BaseAgent;
+import com.argusoft.meetwise.agent.core.AgentType;
 import com.argusoft.meetwise.service.FallbackDataService;
 import com.argusoft.meetwise.service.GeminiService;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +16,7 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class ObjectionPredictionAgent implements Agent {
+public class ObjectionPredictionAgent extends BaseAgent {
 
     private final GeminiService geminiService;
     private final FallbackDataService fallbackDataService;
@@ -23,17 +24,22 @@ public class ObjectionPredictionAgent implements Agent {
     @Value("${app.demo-mode:false}")
     private boolean demoMode;
 
-    @Override
-    public String getName() { return "ObjectionPredictionAgent"; }
+    @Override public String getName()         { return "ObjectionPredictionAgent"; }
+    @Override public int    getOrder()        { return 4; }
+    @Override public AgentType getAgentType() { return AgentType.GEMINI_BASED; }
 
     @Override
-    public int getOrder() { return 4; }
+    public AgentResult execute(AgentContext context) {
+        String researchJson = getPreviousOutputJson(context, "OrganizationResearchAgent");
+        String personaJson  = getPreviousOutputJson(context, "StakeholderPersonaAgent");
+        String strategyJson = getPreviousOutputJson(context, "EngagementStrategyAgent");
 
-    @Override
-    public AgentOutput execute(AgentContext context) {
-        String researchJson  = context.getOutput("OrganizationResearchAgent");
-        String personaJson   = context.getOutput("StakeholderPersonaAgent");
-        String strategyJson  = context.getOutput("EngagementStrategyAgent");
+        addTrace(context, "OrganizationResearchAgent", "INFLUENCE",
+                "ObjectionPredictionAgent used org pain points to anticipate resistance");
+        addTrace(context, "StakeholderPersonaAgent", "INFLUENCE",
+                "ObjectionPredictionAgent predicted objections aligned with stakeholder decision lens");
+        addTrace(context, "EngagementStrategyAgent", "INFLUENCE",
+                "ObjectionPredictionAgent challenged the proposed strategy by stress-testing its key messages");
 
         String outputJson;
         boolean usedGemini = false;
@@ -42,29 +48,37 @@ public class ObjectionPredictionAgent implements Agent {
             outputJson = fallbackDataService.loadFallback(getName());
         } else {
             try {
-                String prompt = buildPrompt(researchJson, personaJson, strategyJson);
-                outputJson = geminiService.generate(prompt);
-                usedGemini = true;
+                String raw = geminiService.generate(buildPrompt(researchJson, personaJson, strategyJson));
+                if (isValidJson(raw)) {
+                    outputJson = raw;
+                    usedGemini = true;
+                } else {
+                    log.warn("[{}] Gemini returned invalid JSON, using fallback", getName());
+                    outputJson = fallbackDataService.loadFallback(getName());
+                }
             } catch (Exception e) {
                 log.warn("[{}] Gemini failed ({}), using fallback", getName(), e.getMessage());
                 outputJson = fallbackDataService.loadFallback(getName());
             }
         }
 
-        return AgentOutput.builder()
-                .agentName(getName())
-                .outputJson(outputJson)
-                .confidenceScore(extractConfidence(outputJson))
-                .influencedBy(List.of("OrganizationResearchAgent", "StakeholderPersonaAgent", "EngagementStrategyAgent"))
-                .usedGemini(usedGemini)
-                .inputSummary("Research + Persona + Strategy outputs")
-                .outputSummary("Top objections with counter-responses and risks")
-                .build();
+        AgentResult result = success(
+                outputJson,
+                extractConfidence(outputJson),
+                List.of("OrganizationResearchAgent", "StakeholderPersonaAgent", "EngagementStrategyAgent"),
+                usedGemini,
+                "Research + Persona + Strategy outputs",
+                "Top objections with counter-responses and risks");
+
+        context.putResult(getName(), result);
+        return result;
     }
 
     private String buildPrompt(String research, String persona, String strategy) {
         return """
-                You are a devil's advocate expert. Predict objections for this sales meeting.
+                You are a skeptical executive and devil's advocate. Predict objections for this sales meeting.
+                Behave like a skeptical executive who does NOT agree with the strategy automatically.
+                Minimum 3 objections. Challenge assumptions. Generate evidence requests.
 
                 Organization Research:
                 %s
@@ -75,35 +89,23 @@ public class ObjectionPredictionAgent implements Agent {
                 Proposed Engagement Strategy:
                 %s
 
-                Return a JSON object (raw JSON, no markdown):
+                Return raw JSON only (no markdown):
                 {
                   "agent": "ObjectionPredictionAgent",
                   "objections": [
                     {
                       "objection": "specific objection text",
-                      "likelihood": 0.9,
-                      "category": "price|technical|timing|competition|trust",
-                      "counterResponse": "how to respond to this objection"
+                      "risk_level": 0.9,
+                      "why_it_may_arise": "root cause explanation",
+                      "recommended_response": "how to counter this objection",
+                      "evidence_needed": "what proof would resolve this"
                     }
                   ],
-                  "topRisks": ["risk1", "risk2"],
-                  "confidenceScore": 0.82,
+                  "strategy_adjustments": ["adjustment1", "adjustment2"],
+                  "red_flags": ["flag1", "flag2"],
+                  "confidence_score": 0.82,
                   "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent", "EngagementStrategyAgent"]
                 }
                 """.formatted(research, persona, strategy);
-    }
-
-    private double extractConfidence(String json) {
-        try {
-            int idx = json.indexOf("\"confidenceScore\"");
-            if (idx == -1) return 0.5;
-            int colon = json.indexOf(":", idx);
-            int comma = json.indexOf(",", colon);
-            int brace = json.indexOf("}", colon);
-            int end = Math.min(comma == -1 ? brace : comma, brace == -1 ? comma : brace);
-            return Double.parseDouble(json.substring(colon + 1, end).trim());
-        } catch (Exception e) {
-            return 0.5;
-        }
     }
 }

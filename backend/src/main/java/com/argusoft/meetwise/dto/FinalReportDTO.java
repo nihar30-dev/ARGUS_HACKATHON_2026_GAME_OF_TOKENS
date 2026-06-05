@@ -27,12 +27,12 @@ public record FinalReportDTO(
             return new FinalReportDTO(
                     report.getId(),
                     report.getMeetingRequestId(),
-                    str(data.get("executiveBrief")),
-                    mapper.writeValueAsString(data.get("conversationFlow")),
-                    mapper.writeValueAsString(data.get("topQuestions")),
-                    mapper.writeValueAsString(data.get("objectionResponses")),
-                    mapper.writeValueAsString(data.get("nextSteps")),
-                    toDouble(data.get("overallConfidenceScore")),
+                    str(pick(data, "executive_brief", "executiveBrief")),
+                    mapper.writeValueAsString(pick(data, "conversation_flow", "conversationFlow")),
+                    mapper.writeValueAsString(pick(data, "questions_to_ask", "topQuestions")),
+                    mapper.writeValueAsString(pick(data, "objections_and_responses", "objectionResponses")),
+                    mapper.writeValueAsString(pick(data, "next_steps", "nextSteps")),
+                    toDouble(pick(data, "readiness_score", "overallConfidenceScore", "confidence_score")),
                     report.getCreatedAt()
             );
         } catch (Exception e) {
@@ -43,6 +43,14 @@ public record FinalReportDTO(
                     report.getOverallConfidence(), report.getCreatedAt()
             );
         }
+    }
+
+    private static Object pick(Map<String, Object> data, String... keys) {
+        for (String k : keys) {
+            Object v = data.get(k);
+            if (v != null) return v;
+        }
+        return null;
     }
 
     private static String str(Object o) { return o == null ? null : o.toString(); }

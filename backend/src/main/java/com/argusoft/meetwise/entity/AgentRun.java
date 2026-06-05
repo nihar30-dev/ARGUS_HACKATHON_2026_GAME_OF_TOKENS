@@ -2,6 +2,8 @@ package com.argusoft.meetwise.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -27,10 +29,11 @@ public class AgentRun {
     @Column(name = "execution_order", nullable = false)
     private int executionOrder;
 
-    // JSONB — stored as serialised JSON string; PostgreSQL type handles querying
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "input_payload", columnDefinition = "jsonb")
     private String inputPayload;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "output_payload", nullable = false, columnDefinition = "jsonb")
     private String outputPayload;
 
@@ -39,6 +42,18 @@ public class AgentRun {
 
     @Column(name = "influenced_by")
     private String influencedBy;
+
+    @Column(name = "agent_type")
+    private String agentType;
+
+    @Column(name = "agent_status")
+    private String agentStatus;
+
+    @Column(name = "trace_summary", columnDefinition = "TEXT")
+    private String traceSummary;
+
+    @Column(name = "influence_summary", columnDefinition = "TEXT")
+    private String influenceSummary;
 
     @Column(name = "used_gemini", nullable = false)
     private boolean usedGemini;

@@ -1,18 +1,10 @@
 package com.argusoft.meetwise.agent;
 
-import lombok.Builder;
-import lombok.Data;
-
-import java.util.List;
-
-@Data
-@Builder
-public class AgentOutput {
-    private String agentName;
-    private String outputJson;
-    private double confidenceScore;
-    private List<String> influencedBy;
-    private boolean usedGemini;
-    private String inputSummary;
-    private String outputSummary;
+/**
+ * @deprecated Replaced by {@link AgentResult}. This class is kept only to avoid
+ *             compile errors during the migration window and will be removed.
+ */
+@Deprecated(forRemoval = true)
+public final class AgentOutput {
+    private AgentOutput() {}
 }

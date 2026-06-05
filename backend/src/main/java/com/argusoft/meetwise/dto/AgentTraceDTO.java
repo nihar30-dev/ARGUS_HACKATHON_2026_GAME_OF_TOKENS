@@ -10,6 +10,7 @@ public record AgentTraceDTO(
         UUID meetingRequestId,
         String sourceAgent,
         String targetAgent,
+        String influenceType,
         String inputSummary,
         String outputSummary,
         String influenceDescription,
@@ -19,6 +20,7 @@ public record AgentTraceDTO(
         return new AgentTraceDTO(
                 trace.getId(), trace.getMeetingRequestId(),
                 trace.getSourceAgent(), trace.getTargetAgent(),
+                trace.getInfluenceType() != null ? trace.getInfluenceType() : "INFLUENCE",
                 trace.getInputSummary(), trace.getOutputSummary(),
                 trace.getInfluenceDescription(), trace.getCreatedAt()
         );
