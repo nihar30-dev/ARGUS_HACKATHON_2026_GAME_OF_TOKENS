@@ -143,7 +143,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 onPressed: notifier.toggle,
               ),
-              if (auth.isLoggedIn) ...[
+              if (auth.isLoggedIn)
                 _UserAvatarButton(
                   user: auth.currentUser,
                   iconColor: iconColor,
@@ -152,8 +152,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     await auth.logout();
                     nav.pushNamedAndRemoveUntil(Routes.login, (_) => false);
                   },
+                )
+              else
+                _NavLoginButton(
+                  onPressed: () =>
+                      Navigator.pushNamed(context, Routes.login),
+                  frosted: _navFrosted,
                 ),
-              ],
               const SizedBox(width: 2),
               _NavCTAButton(
                 label: 'New Meeting',
@@ -400,6 +405,92 @@ class _GradientButtonState extends State<_GradientButton> {
                   ),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Login button in the nav bar — glass on dark hero, outlined when frosted.
+class _NavLoginButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final bool frosted;
+  const _NavLoginButton({required this.onPressed, required this.frosted});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (!frosted) {
+      // On dark hero: ghost button with white border
+      return ClipRRect(
+        borderRadius: AppSpacing.roundedMd,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: AppSpacing.roundedMd,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: AppSpacing.roundedMd,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: AppSpacing.roundedMd,
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.login_rounded,
+                        size: 14,
+                        color: Colors.white.withValues(alpha: 0.90)),
+                    const SizedBox(width: 6),
+                    Text('Sign In',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.90),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Frosted nav: outlined button with theme-appropriate colours
+    final fg = isDark ? AppColors.tealLight : AppColors.brand;
+    final borderColor =
+        isDark ? AppColors.outlineDark : AppColors.outlineStrong;
+    return Container(
+      decoration: BoxDecoration(
+        color: fg.withValues(alpha: 0.08),
+        borderRadius: AppSpacing.roundedMd,
+        border: Border.all(color: borderColor),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: AppSpacing.roundedMd,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: AppSpacing.roundedMd,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.login_rounded, size: 14, color: fg),
+                const SizedBox(width: 6),
+                Text('Sign In',
+                    style: TextStyle(
+                        color: fg,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ],
             ),
           ),
         ),
