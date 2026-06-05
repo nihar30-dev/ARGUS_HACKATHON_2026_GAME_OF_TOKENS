@@ -113,13 +113,32 @@ public class CriticValidatorAgent implements Agent {
         }
 
         if (!firstObjText.isBlank()) {
-            boolean covered = messages.stream()
-                    .map(String::valueOf)
-                    .anyMatch(m -> firstObjText.length() > 10
-                            && m.length() > 5
-                            && firstObjText.substring(0, Math.min(20, firstObjText.length()))
-                            .toLowerCase().chars()
-                            .filter(c -> m.toLowerCase().indexOf(c) >= 0).count() > 5);
+            boolean covered = false;
+
+            for (Object messageObj : messages) {
+                String m = String.valueOf(messageObj);
+
+                if (firstObjText.length() > 10 && m.length() > 5) {
+
+                    String subText = firstObjText.substring(
+                            0,
+                            Math.min(20, firstObjText.length())
+                    ).toLowerCase();
+
+                    long matchCount = 0;
+
+                    for (char c : subText.toCharArray()) {
+                        if (m.toLowerCase().indexOf(c) >= 0) {
+                            matchCount++;
+                        }
+                    }
+
+                    if (matchCount > 5) {
+                        covered = true;
+                        break;
+                    }
+                }
+            }
             if (!covered) {
                 issues.add(Map.of("agentName", "EngagementStrategyAgent", "severity", "warning",
                         "issue", "Highest-likelihood objection is not directly addressed in strategy key messages"));

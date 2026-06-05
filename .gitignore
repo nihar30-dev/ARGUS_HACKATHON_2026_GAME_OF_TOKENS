@@ -1,0 +1,48 @@
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+*.sublime-project
+*.sublime-workspace
+
+# Maven / Java
+target/
+*.log
+local.properties
+.recommenders/
+.classpath
+.project
+.settings/
+dependency-reduced-pom.xml
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+.pub-cache/
+.pub/
+
+# Flutter Android
+/frontend/android/local.properties
+/frontend/android/key.properties
+/frontend/android/.gradle/
+
+# Flutter iOS
+/frontend/ios/Flutter/GeneratedPluginRegistrant.h
+/frontend/ios/Flutter/GeneratedPluginRegistrant.m
+/frontend/ios/Flutter/GeneratedPluginRegistrant.swift
+/frontend/ios/Flutter/flutter_export_environment.sh
+/frontend/ios/Pods/
