@@ -37,6 +37,8 @@ public class OrganizationResearchAgent extends BaseAgent {
         String outputJson;
         boolean usedGemini = false;
 
+        String ragContextText = formatRagContext(context);
+
         if (demoMode) {
             outputJson = fallbackDataService.loadFallback(getName());
             log.info("[{}] Demo mode — loaded fallback JSON", getName());
@@ -45,33 +47,36 @@ public class OrganizationResearchAgent extends BaseAgent {
                 String raw = llmService.generate(
                         buildPrompt(meeting.getOrganizationName(),
                                 meeting.getMeetingObjective(),
-                                meeting.getOfferingDescription()));
+                                meeting.getOfferingDescription(),
+                                ragContextText));
                 if (isValidJson(raw)) {
                     outputJson = raw;
                     usedGemini = true;
                 } else {
-                    log.warn("[{}] Gemini returned invalid JSON, using fallback", getName());
+                    log.warn("[{}] LLM returned invalid JSON, using fallback", getName());
                     outputJson = fallbackDataService.loadFallback(getName());
                 }
             } catch (Exception e) {
-                log.warn("[{}] Gemini failed ({}), using fallback", getName(), e.getMessage());
+                log.warn("[{}] LLM call failed ({}), using fallback", getName(), e.getMessage());
                 outputJson = fallbackDataService.loadFallback(getName());
             }
         }
 
-        AgentResult result = success(
-                outputJson,
-                extractConfidence(outputJson),
-                List.of(),
-                usedGemini,
-                inputSummary,
-                "Organization analysis for " + meeting.getOrganizationName());
+        AgentResult result = withRagMetadata(
+                success(outputJson,
+                        extractConfidence(outputJson),
+                        List.of(),
+                        usedGemini,
+                        inputSummary,
+                        "Organization analysis for " + meeting.getOrganizationName()),
+                context,
+                extractEvidenceGaps(outputJson));
 
         context.putResult(getName(), result);
         return result;
     }
 
-    private String buildPrompt(String orgName, String objective, String offering) {
+    private String buildPrompt(String orgName, String objective, String offering, String ragContext) {
         return """
                You are a business analyst preparing meeting intelligence.
 
@@ -84,12 +89,13 @@ public class OrganizationResearchAgent extends BaseAgent {
                 - Avoid generic business advice.
                 - Use short phrases instead of paragraphs where possible.
                 - If information is uncertain, add it to evidence_gaps.
+                - Prefer context-backed recommendations over assumptions.
                 - Return JSON only.
 
                 Organization: %s
                 Meeting Objective: %s
                 Our Offering: %s
-
+                %s
                 Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
 
                 {
@@ -104,6 +110,6 @@ public class OrganizationResearchAgent extends BaseAgent {
                 "confidence_score": 0.85,
                 "influencedBy": []
                 }
-                """.formatted(orgName, objective, offering);
+                """.formatted(orgName, objective, offering, ragContext);
     }
 }

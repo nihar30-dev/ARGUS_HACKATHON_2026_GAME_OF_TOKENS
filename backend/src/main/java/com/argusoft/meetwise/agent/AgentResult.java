@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 public class AgentResult {
 
     // --- Identity ---
@@ -51,4 +51,15 @@ public class AgentResult {
     private boolean usedGemini;
     private String inputSummary;
     private String outputSummary;
+
+    // --- RAG traceability ---
+    private boolean ragContextUsed;
+
+    @Builder.Default
+    private List<String> ragChunkIds = new java.util.ArrayList<>();
+
+    private String ragSummary;
+
+    @Builder.Default
+    private List<String> evidenceGaps = new java.util.ArrayList<>();
 }

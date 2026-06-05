@@ -1,6 +1,7 @@
 package com.argusoft.meetwise.agent;
 
 import com.argusoft.meetwise.agent.core.AgentTraceMessage;
+import com.argusoft.meetwise.dto.KnowledgeChunkDto;
 import com.argusoft.meetwise.entity.MeetingRequest;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,9 @@ public class AgentContext {
     // Raw JSON outputs (backward compat + DB persistence)
     private final Map<String, String>         agentOutputs  = new LinkedHashMap<>();
 
+    // RAG context — refreshed by orchestrator before each applicable agent
+    @Getter private List<KnowledgeChunkDto>   ragContext     = new ArrayList<>();
+
     // -----------------------------------------------------------------------
     // Write API
     // -----------------------------------------------------------------------
@@ -52,6 +56,26 @@ public class AgentContext {
 
     public void addTraceMessage(AgentTraceMessage message) {
         traceMessages.add(message);
+    }
+
+    /** Replaces the current RAG context before each applicable agent runs. */
+    public void setRagContext(List<KnowledgeChunkDto> context) {
+        this.ragContext = context != null ? context : List.of();
+    }
+
+    /**
+     * Returns a formatted, prompt-ready text block of the current RAG context.
+     * Returns an empty string when no chunks are available.
+     */
+    public String getRagContextAsText() {
+        if (ragContext == null || ragContext.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < ragContext.size(); i++) {
+            sb.append("Context ").append(i + 1).append(":\n")
+              .append(ragContext.get(i).chunkText())
+              .append("\n\n");
+        }
+        return sb.toString().trim();
     }
 
     // Typed slot setters (called automatically via putResult, or manually)

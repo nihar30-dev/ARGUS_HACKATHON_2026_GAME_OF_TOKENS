@@ -103,6 +103,8 @@ public class CriticValidatorAgent extends BaseAgent {
                 .validationFeedback(feedback)
                 .conflictResolutionNotes(List.of())
                 .usedGemini(false)
+                .ragContextUsed(false)
+                .ragSummary("Rule-based agent — RAG context stored but deterministic logic applied")
                 .inputSummary("All 4 prior agent outputs")
                 .outputSummary("weakAssumptions=" + weakAssumptions.size()
                         + ", contradictions=" + contradictions.size()

@@ -5,6 +5,7 @@ import com.argusoft.meetwise.agent.AgentContext;
 import com.argusoft.meetwise.agent.AgentResult;
 import com.argusoft.meetwise.agent.core.AgentTraceMessage;
 import com.argusoft.meetwise.dto.*;
+import com.argusoft.meetwise.dto.KnowledgeChunkDto;
 import com.argusoft.meetwise.entity.*;
 import com.argusoft.meetwise.exception.MeetwiseException;
 import com.argusoft.meetwise.repository.*;
@@ -33,6 +34,7 @@ public class MeetingOrchestrationService {
     private final FinalReportRepository       finalReportRepository;
     private final ObjectMapper                objectMapper;
     private final SimpMessagingTemplate       messagingTemplate;
+    private final KnowledgeRetrievalService   knowledgeRetrievalService;
 
     // Self-reference so @Async works via Spring proxy (field injection, not constructor)
     @Autowired @Lazy
@@ -104,6 +106,9 @@ public class MeetingOrchestrationService {
 
         try {
             for (Agent agent : pipeline) {
+                // Fetch RAG context for agents that benefit from knowledge retrieval
+                refreshRagContext(agent.getName(), meeting, context);
+
                 // Notify client this agent is starting
                 messagingTemplate.convertAndSend(topic, AgentProgressDTO.builder()
                         .type("AGENT_START")
@@ -297,5 +302,72 @@ public class MeetingOrchestrationService {
         if (o == null) return 0.5;
         if (o instanceof Number n) return n.doubleValue();
         try { return Double.parseDouble(o.toString()); } catch (Exception e) { return 0.5; }
+    }
+
+    // -----------------------------------------------------------------------
+    // RAG context refresh — called before each agent that benefits from it
+    // -----------------------------------------------------------------------
+
+    /**
+     * Builds a semantically relevant query for each agent, retrieves the
+     * top matching knowledge chunks, and injects them into the AgentContext.
+     * Clears the context for agents that do not use RAG (StakeholderPersonaAgent).
+     * Never throws — on any failure the context is set to an empty list.
+     */
+    private void refreshRagContext(String agentName, MeetingRequest meeting, AgentContext context) {
+        String query = buildRagQuery(agentName, meeting, context);
+        if (query == null) {
+            context.setRagContext(List.of());
+            return;
+        }
+        try {
+            List<KnowledgeChunkDto> chunks = knowledgeRetrievalService.retrieveRelevantContext(query, 5);
+            context.setRagContext(chunks);
+        } catch (Exception e) {
+            log.warn("[Pipeline] RAG retrieval failed for {} — continuing without context: {}", agentName, e.getMessage());
+            context.setRagContext(List.of());
+        }
+    }
+
+    /** Returns the retrieval query for each agent, or null to skip RAG. */
+    private String buildRagQuery(String agentName, MeetingRequest meeting, AgentContext context) {
+        return switch (agentName) {
+            case "OrganizationResearchAgent" ->
+                meeting.getOrganizationName() + " "
+                + meeting.getMeetingObjective() + " "
+                + meeting.getOfferingDescription();
+
+            case "EngagementStrategyAgent" ->
+                meeting.getOrganizationName() + " "
+                + meeting.getStakeholderRole() + " "
+                + meeting.getOfferingDescription() + " meeting strategy partnership";
+
+            case "ObjectionPredictionAgent" ->
+                meeting.getStakeholderRole() + " objections concerns risks "
+                + extractField(context, "EngagementStrategyAgent", "meeting_goal")
+                + " digital health";
+
+            case "FinalSynthesisAgent" ->
+                meeting.getMeetingObjective() + " "
+                + extractField(context, "StrategyRefinementAgent", "revised_positioning")
+                + " meeting preparation next steps";
+
+            // Rule-based agents and StakeholderPersonaAgent skip RAG
+            default -> null;
+        };
+    }
+
+    /** Safely extracts a single field from a prior agent's JSON output. */
+    private String extractField(AgentContext context, String agentName, String field) {
+        try {
+            String json = context.getOutput(agentName);
+            if (json == null || "{}".equals(json)) return "";
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = objectMapper.readValue(json, Map.class);
+            Object val = map.get(field);
+            return val != null ? val.toString() : "";
+        } catch (Exception e) {
+            return "";
+        }
     }
 }

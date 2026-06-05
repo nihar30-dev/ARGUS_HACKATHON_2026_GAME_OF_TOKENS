@@ -208,6 +208,8 @@ public class StrategyRefinementAgent extends BaseAgent {
                 .validationFeedback(appliedFeedback)
                 .conflictResolutionNotes(conflictNotes)
                 .usedGemini(false)
+                .ragContextUsed(false)
+                .ragSummary("Rule-based agent — deterministic refinement rules applied")
                 .inputSummary("Original strategy + " + objections.size() + " objections + critic feedback")
                 .outputSummary(changesMade.size() + " change(s) applied — "
                         + resolvedObjections.size() + " objection(s) resolved, "

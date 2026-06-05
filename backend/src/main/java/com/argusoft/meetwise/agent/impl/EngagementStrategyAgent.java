@@ -47,6 +47,7 @@ public class EngagementStrategyAgent extends BaseAgent {
         addTrace(context, "StakeholderPersonaAgent", "INFLUENCE",
                 "EngagementStrategyAgent tailored strategy to stakeholder decision lens and communication style");
 
+        String ragContextText = formatRagContext(context);
         String outputJson;
         boolean usedGemini = false;
 
@@ -54,34 +55,36 @@ public class EngagementStrategyAgent extends BaseAgent {
             outputJson = fallbackDataService.loadFallback(getName());
         } else {
             try {
-                String raw = llmService.generate(buildPrompt(researchJson, personaJson, offering));
+                String raw = llmService.generate(buildPrompt(researchJson, personaJson, offering, ragContextText));
                 if (isValidJson(raw)) {
                     outputJson = raw;
                     usedGemini = true;
                 } else {
-                    log.warn("[{}] Gemini returned invalid JSON, using fallback", getName());
+                    log.warn("[{}] LLM returned invalid JSON, using fallback", getName());
                     outputJson = fallbackDataService.loadFallback(getName());
                 }
             } catch (Exception e) {
-                log.warn("[{}] Gemini failed ({}), using fallback", getName(), e.getMessage());
+                log.warn("[{}] LLM call failed ({}), using fallback", getName(), e.getMessage());
                 outputJson = fallbackDataService.loadFallback(getName());
             }
         }
 
-        AgentResult result = success(
-                outputJson,
-                extractConfidence(outputJson),
-                List.of("OrganizationResearchAgent", "StakeholderPersonaAgent"),
-                usedGemini,
-                "Research + Persona for " + context.getMeetingRequest().getOrganizationName(),
-                "Initial meeting strategy with positioning and value proposition");
+        AgentResult result = withRagMetadata(
+                success(outputJson,
+                        extractConfidence(outputJson),
+                        List.of("OrganizationResearchAgent", "StakeholderPersonaAgent"),
+                        usedGemini,
+                        "Research + Persona for " + context.getMeetingRequest().getOrganizationName(),
+                        "Initial meeting strategy with positioning and value proposition"),
+                context,
+                extractEvidenceGaps(outputJson));
 
         context.putResult(getName(), result);
         log.info("[{}] Strategy built, confidence={}", getName(), result.getConfidenceScore());
         return result;
     }
 
-    private String buildPrompt(String research, String persona, String offering) {
+    private String buildPrompt(String research, String persona, String offering, String ragContext) {
         return """
                You are a senior sales strategist.
 
@@ -95,6 +98,7 @@ public class EngagementStrategyAgent extends BaseAgent {
                     - Generate 2-3 partnership angles.
                     - Generate 3 success criteria.
                     - Generate 3 key messages.
+                    - Prefer context-backed recommendations. If context is insufficient, note gaps.
                     - Return JSON only.
 
                     Organization Research:
@@ -105,7 +109,7 @@ public class EngagementStrategyAgent extends BaseAgent {
 
                     Our Offering:
                     %s
-
+                    %s
                     Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
 
                     {
@@ -117,9 +121,10 @@ public class EngagementStrategyAgent extends BaseAgent {
                     "success_criteria": ["criterion1", "criterion2", "criterion3"],
                     "recommended_next_step": "the single most important next action to propose",
                     "key_messages": ["message1", "message2", "message3"],
+                    "evidence_gaps": [],
                     "confidence_score": 0.88,
                     "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent"]
                     }
-                """.formatted(research, persona, offering);
+                """.formatted(research, persona, offering, ragContext);
     }
 }

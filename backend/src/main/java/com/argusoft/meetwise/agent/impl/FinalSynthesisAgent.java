@@ -51,6 +51,7 @@ public class FinalSynthesisAgent extends BaseAgent {
         addTrace(context, "CriticValidatorAgent", "CONFLICT_RESOLUTION",
                 "FinalSynthesisAgent resolved all critic flags by incorporating the refined strategy");
 
+        String ragContextText = formatRagContext(context);
         String outputJson;
         boolean usedGemini = false;
 
@@ -58,33 +59,35 @@ public class FinalSynthesisAgent extends BaseAgent {
             outputJson = fallbackDataService.loadFallback(getName());
         } else {
             try {
-                String raw = llmService.generate(buildPrompt(context));
+                String raw = llmService.generate(buildPrompt(context, ragContextText));
                 if (isValidJson(raw)) {
                     outputJson = raw;
                     usedGemini = true;
                 } else {
-                    log.warn("[{}] Gemini returned invalid JSON, using fallback", getName());
+                    log.warn("[{}] LLM returned invalid JSON, using fallback", getName());
                     outputJson = fallbackDataService.loadFallback(getName());
                 }
             } catch (Exception e) {
-                log.warn("[{}] Gemini failed ({}), using fallback", getName(), e.getMessage());
+                log.warn("[{}] LLM call failed ({}), using fallback", getName(), e.getMessage());
                 outputJson = fallbackDataService.loadFallback(getName());
             }
         }
 
-        AgentResult result = success(
-                outputJson,
-                extractConfidence(outputJson),
-                ALL_SOURCES,
-                usedGemini,
-                "All 6 prior agents including StrategyRefinementAgent",
-                "Complete meeting preparation package — executive brief, conversation flow, Q&A");
+        AgentResult result = withRagMetadata(
+                success(outputJson,
+                        extractConfidence(outputJson),
+                        ALL_SOURCES,
+                        usedGemini,
+                        "All 6 prior agents including StrategyRefinementAgent",
+                        "Complete meeting preparation package — executive brief, conversation flow, Q&A"),
+                context,
+                extractEvidenceGaps(outputJson));
 
         context.putResult(getName(), result);
         return result;
     }
 
-    private String buildPrompt(AgentContext context) {
+    private String buildPrompt(AgentContext context, String ragContextText) {
         // Extract only the key fields from each agent to keep the prompt within token limits.
         // Full JSONs from 6 agents can exceed 3000+ tokens; summaries keep it under 1200.
         String orgSummary      = extractField(context, "OrganizationResearchAgent",
@@ -112,7 +115,7 @@ public class FinalSynthesisAgent extends BaseAgent {
                 OBJECTIONS: %s
                 CRITIC FLAGS: %s
                 REFINED STRATEGY: %s
-
+                %s
                 Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
                 {
                   "agent": "FinalSynthesisAgent",
@@ -130,6 +133,7 @@ public class FinalSynthesisAgent extends BaseAgent {
                   ],
                   "next_steps": ["step1", "step2", "step3"],
                   "refinements_applied": ["change1", "change2"],
+                  "evidence_gaps": [],
                   "readiness_score": 0.91,
                   "confidence_score": 0.91,
                   "overallConfidenceScore": 0.91,
@@ -138,7 +142,7 @@ public class FinalSynthesisAgent extends BaseAgent {
                                    "CriticValidatorAgent","StrategyRefinementAgent"]
                 }
                 """.formatted(orgSummary, personaSummary, strategyGoal,
-                              objectionList, criticIssues, refinedStrategy);
+                              objectionList, criticIssues, refinedStrategy, ragContextText);
     }
 
     /**

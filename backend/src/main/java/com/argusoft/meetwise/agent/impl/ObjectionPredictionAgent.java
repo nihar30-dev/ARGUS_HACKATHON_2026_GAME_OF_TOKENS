@@ -45,6 +45,7 @@ public class ObjectionPredictionAgent extends BaseAgent {
         addTrace(context, "EngagementStrategyAgent", "INFLUENCE",
                 "ObjectionPredictionAgent challenged the proposed strategy by stress-testing its key messages");
 
+        String ragContextText = formatRagContext(context);
         String outputJson;
         boolean usedGemini = false;
 
@@ -52,33 +53,35 @@ public class ObjectionPredictionAgent extends BaseAgent {
             outputJson = fallbackDataService.loadFallback(getName());
         } else {
             try {
-                String raw = llmService.generate(buildPrompt(researchJson, personaJson, strategyJson));
+                String raw = llmService.generate(buildPrompt(researchJson, personaJson, strategyJson, ragContextText));
                 if (isValidJson(raw)) {
                     outputJson = raw;
                     usedGemini = true;
                 } else {
-                    log.warn("[{}] Gemini returned invalid JSON, using fallback", getName());
+                    log.warn("[{}] LLM returned invalid JSON, using fallback", getName());
                     outputJson = fallbackDataService.loadFallback(getName());
                 }
             } catch (Exception e) {
-                log.warn("[{}] Gemini failed ({}), using fallback", getName(), e.getMessage());
+                log.warn("[{}] LLM call failed ({}), using fallback", getName(), e.getMessage());
                 outputJson = fallbackDataService.loadFallback(getName());
             }
         }
 
-        AgentResult result = success(
-                outputJson,
-                extractConfidence(outputJson),
-                List.of("OrganizationResearchAgent", "StakeholderPersonaAgent", "EngagementStrategyAgent"),
-                usedGemini,
-                "Research + Persona + Strategy outputs",
-                "Top objections with counter-responses and risks");
+        AgentResult result = withRagMetadata(
+                success(outputJson,
+                        extractConfidence(outputJson),
+                        List.of("OrganizationResearchAgent", "StakeholderPersonaAgent", "EngagementStrategyAgent"),
+                        usedGemini,
+                        "Research + Persona + Strategy outputs",
+                        "Top objections with counter-responses and risks"),
+                context,
+                extractEvidenceGaps(outputJson));
 
         context.putResult(getName(), result);
         return result;
     }
 
-    private String buildPrompt(String research, String persona, String strategy) {
+    private String buildPrompt(String research, String persona, String strategy, String ragContext) {
         return """
                You are a skeptical executive reviewing this meeting strategy.
 
@@ -91,6 +94,7 @@ public class ObjectionPredictionAgent extends BaseAgent {
                 - Keep responses concise.
                 - Avoid repetition.
                 - Use organization, persona, and strategy context.
+                - Use retrieved knowledge to ground objections in known patterns.
                 - Return JSON only.
 
                 Organization Research:
@@ -101,7 +105,7 @@ public class ObjectionPredictionAgent extends BaseAgent {
 
                 Proposed Engagement Strategy:
                 %s
-
+                %s
                 Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
 
                 {
@@ -117,9 +121,10 @@ public class ObjectionPredictionAgent extends BaseAgent {
                 ],
                 "strategy_adjustments": ["adjustment1", "adjustment2"],
                 "red_flags": ["flag1", "flag2"],
+                "evidence_gaps": [],
                 "confidence_score": 0.82,
                 "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent", "EngagementStrategyAgent"]
                 }
-                """.formatted(research, persona, strategy);
+                """.formatted(research, persona, strategy, ragContext);
     }
 }

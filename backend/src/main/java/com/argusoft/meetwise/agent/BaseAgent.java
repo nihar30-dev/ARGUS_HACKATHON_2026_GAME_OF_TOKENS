@@ -1,12 +1,14 @@
 package com.argusoft.meetwise.agent;
 
 import com.argusoft.meetwise.agent.core.*;
+import com.argusoft.meetwise.dto.KnowledgeChunkDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Abstract base for all MeetWise agents.
@@ -226,6 +228,73 @@ public abstract class BaseAgent implements Agent {
         }
         if (sb.length() > 1 && sb.charAt(sb.length() - 1) == ',') sb.setLength(sb.length() - 1);
         return sb.append("}").toString();
+    }
+
+    // -----------------------------------------------------------------------
+    // RAG helpers — used by Gemini agents to inject retrieved context
+    // -----------------------------------------------------------------------
+
+    /**
+     * Returns a formatted prompt section for the current RAG context.
+     * Returns an empty string when no chunks are available (graceful degradation).
+     */
+    protected String formatRagContext(AgentContext context) {
+        String text = context.getRagContextAsText();
+        if (text == null || text.isBlank()) return "";
+        return "\n\nRelevant Knowledge Context (use only when applicable; note gaps if insufficient):\n"
+                + text + "\n";
+    }
+
+    /** Extracts chunk UUIDs as strings from the current RAG context. */
+    protected List<String> extractRagChunkIds(AgentContext context) {
+        List<KnowledgeChunkDto> rag = context.getRagContext();
+        if (rag == null || rag.isEmpty()) return List.of();
+        return rag.stream()
+                .map(c -> c.id() != null ? c.id().toString() : "")
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toList());
+    }
+
+    /** Builds a one-line summary of what RAG chunks were used. */
+    protected String buildRagSummary(AgentContext context) {
+        List<KnowledgeChunkDto> rag = context.getRagContext();
+        if (rag == null || rag.isEmpty()) return "No RAG context retrieved";
+        String sources = rag.stream()
+                .map(KnowledgeChunkDto::sourceType)
+                .distinct()
+                .collect(Collectors.joining(", "));
+        return rag.size() + " chunk(s) from [" + sources + "]";
+    }
+
+    /** Extracts the 'evidence_gaps' array from an agent's output JSON, if present. */
+    @SuppressWarnings("unchecked")
+    protected List<String> extractEvidenceGaps(String outputJson) {
+        if (outputJson == null || outputJson.isBlank()) return List.of();
+        try {
+            Map<String, Object> map = objectMapper.readValue(outputJson, Map.class);
+            Object val = map.get("evidence_gaps");
+            if (val instanceof List<?> list) {
+                return list.stream().map(Object::toString)
+                        .filter(s -> !s.isBlank()).collect(Collectors.toList());
+            }
+        } catch (Exception ignored) {}
+        return List.of();
+    }
+
+    /**
+     * Augments a successfully built AgentResult with RAG traceability metadata.
+     * Uses toBuilder() so the returned instance is a fresh copy — the original is unchanged.
+     */
+    protected AgentResult withRagMetadata(AgentResult base,
+                                          AgentContext context,
+                                          List<String> evidenceGaps) {
+        List<KnowledgeChunkDto> rag = context.getRagContext();
+        return base.toBuilder()
+                .ragContextUsed(rag != null && !rag.isEmpty())
+                .ragChunkIds(extractRagChunkIds(context))
+                .ragSummary(buildRagSummary(context))
+                .evidenceGaps(evidenceGaps != null ? evidenceGaps : List.of())
+                .build();
     }
 
     // -----------------------------------------------------------------------
