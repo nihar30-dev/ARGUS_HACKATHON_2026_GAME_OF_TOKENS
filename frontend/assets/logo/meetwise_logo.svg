@@ -1,0 +1,44 @@
+<svg width="200" height="48" viewBox="0 0 200 48" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="coreG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E40AF"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="ringG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#6366F1" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <!-- Orbit ring outer -->
+  <circle cx="24" cy="24" r="20" fill="none" stroke="url(#ringG)" stroke-width="1"/>
+  <!-- Orbit ring inner dashed -->
+  <circle cx="24" cy="24" r="13" fill="none" stroke="#2563EB" stroke-width="0.75" stroke-dasharray="3 3" opacity="0.5"/>
+  <!-- Satellite nodes -->
+  <circle cx="24" cy="4" r="4" fill="#1D4ED8"/>
+  <circle cx="24" cy="4" r="1.8" fill="white" opacity="0.9"/>
+  <circle cx="41" cy="14" r="3" fill="#1D4ED8"/>
+  <circle cx="41" cy="14" r="1.3" fill="white" opacity="0.85"/>
+  <circle cx="38" cy="38" r="3" fill="#1D4ED8"/>
+  <circle cx="38" cy="38" r="1.3" fill="white" opacity="0.85"/>
+  <circle cx="10" cy="38" r="3" fill="#1D4ED8"/>
+  <circle cx="10" cy="38" r="1.3" fill="white" opacity="0.85"/>
+  <circle cx="7" cy="14" r="3" fill="#1D4ED8"/>
+  <circle cx="7" cy="14" r="1.3" fill="white" opacity="0.85"/>
+  <!-- Connector lines -->
+  <line x1="24" y1="8" x2="24" y2="17" stroke="#3B82F6" stroke-width="0.8" opacity="0.5"/>
+  <line x1="38" y1="17" x2="31" y2="21" stroke="#3B82F6" stroke-width="0.8" opacity="0.5"/>
+  <line x1="35" y1="35" x2="28" y2="29" stroke="#3B82F6" stroke-width="0.8" opacity="0.5"/>
+  <line x1="13" y1="35" x2="20" y2="29" stroke="#3B82F6" stroke-width="0.8" opacity="0.5"/>
+  <line x1="10" y1="17" x2="17" y2="21" stroke="#3B82F6" stroke-width="0.8" opacity="0.5"/>
+  <!-- Core node -->
+  <circle cx="24" cy="24" r="9" fill="url(#coreG)"/>
+  <circle cx="24" cy="24" r="11" fill="none" stroke="#0F9E75" stroke-width="1.2" opacity="0.7"/>
+  <!-- Core dots -->
+  <circle cx="21.5" cy="24" r="1.3" fill="white" opacity="0.95"/>
+  <circle cx="24" cy="21.5" r="1.3" fill="white" opacity="0.95"/>
+  <circle cx="26.5" cy="24" r="1.3" fill="white" opacity="0.95"/>
+  <circle cx="24" cy="26.5" r="1.3" fill="#1ECEAA" opacity="0.95"/>
+  <!-- Wordmark -->
+  <text x="54" y="30" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="22" font-weight="700" fill="#0F172A" letter-spacing="-0.5">Meet</text>
+  <text x="106" y="30" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="22" font-weight="700" fill="#1D4ED8" letter-spacing="-0.5">Wise</text>
+</svg>

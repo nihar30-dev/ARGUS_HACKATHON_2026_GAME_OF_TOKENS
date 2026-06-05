@@ -13,18 +13,20 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme.dart';
 import '../widgets/agent_card.dart';
+import '../widgets/app_header.dart';
 import '../widgets/error_view.dart';
 import '../widgets/trace_workflow_widget.dart';
 
 // ── Agent Metadata & Short names ──────────────────────────────────────────────
 
 const Map<String, String> _kShortNames = {
-  'OrganizationResearchAgent': 'Research',
-  'StakeholderPersonaAgent': 'Persona',
-  'EngagementStrategyAgent': 'Strategy',
-  'ObjectionPredictionAgent': 'Objection',
-  'CriticValidatorAgent': 'Critic',
-  'FinalSynthesisAgent': 'Synthesis',
+  'OrganizationResearchAgent':  'Research',
+  'StakeholderPersonaAgent':    'Persona',
+  'EngagementStrategyAgent':    'Strategy',
+  'ObjectionPredictionAgent':   'Objection',
+  'CriticValidatorAgent':       'Critic',
+  'StrategyRefinementAgent':    'Refinement',
+  'FinalSynthesisAgent':        'Synthesis',
 };
 
 const List<String> _kAgentNames = [
@@ -33,6 +35,7 @@ const List<String> _kAgentNames = [
   'EngagementStrategyAgent',
   'ObjectionPredictionAgent',
   'CriticValidatorAgent',
+  'StrategyRefinementAgent',
   'FinalSynthesisAgent',
 ];
 
@@ -42,6 +45,7 @@ const List<String> _kDisplayNames = [
   'Engagement Strategy Agent',
   'Objection Prediction Agent',
   'Critic Validator Agent',
+  'Strategy Refinement Agent',
   'Final Synthesis Agent',
 ];
 
@@ -51,8 +55,12 @@ const List<IconData> _kIcons = [
   Icons.lightbulb_outline,
   Icons.warning_amber_outlined,
   Icons.fact_check_outlined,
+  Icons.tune_outlined,
   Icons.summarize_outlined,
 ];
+
+// Rule-based agents by index (0-based): 1=Persona, 4=Critic, 5=StrategyRefinement
+const Set<int> _kRuleBasedIndices = {1, 4, 5};
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -100,6 +108,7 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
   void _autoExpandKeys() {
     if (_session.status == 'COMPLETED') {
       _expanded.add('CriticValidatorAgent');
+      _expanded.add('StrategyRefinementAgent');
       _expanded.add('FinalSynthesisAgent');
     }
   }
@@ -210,7 +219,7 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
                     children: [
                       // Active visual pipeline indicator
                       Container(
-                        decoration: AppTheme.cardDecoration,
+                        decoration: AppTheme.cardDecorationOf(context),
                         child: TraceWorkflowWidget(
                           runs: _session.agentRuns,
                           activeAgentName: _selectedAgent ?? 
@@ -242,23 +251,36 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
   }
 
   PreferredSizeWidget _buildAppBar() => AppBar(
-        title: Text('Agent Execution Trace — ${_session.organizationName}'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const AppHeader(),
+            Text(
+              _session.organizationName,
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
         actions: [
           if (_session.status == 'COMPLETED')
             TextButton.icon(
               onPressed: () => Navigator.pushNamed(
-                  context, Routes.report,
-                  arguments: _session),
+                  context, Routes.report, arguments: _session),
               icon: const Icon(Icons.article_outlined, size: 16),
-              label: const Text('Final Report'),
+              label: const Text('Report'),
             ),
+          const ThemeToggleButton(),
           const SizedBox(width: AppSpacing.sm),
         ],
       );
 
   Widget _buildTimeline() {
     return Column(
-      children: List.generate(6, (index) {
+      children: List.generate(7, (index) {
         final agentName = _kAgentNames[index];
         final isCompleted = index < _models.length;
         final isActive = index == _models.length && _session.status == 'RUNNING';
@@ -311,7 +333,7 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
                 name: _kDisplayNames[index],
                 order: index + 1,
                 icon: _kIcons[index],
-                isGemini: index != 1 && index != 4,
+                isGemini: !_kRuleBasedIndices.contains(index),
               ),
             ],
           );
@@ -328,7 +350,7 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
                 name: _kDisplayNames[index],
                 order: index + 1,
                 icon: _kIcons[index],
-                isGemini: index != 1 && index != 4,
+                isGemini: !_kRuleBasedIndices.contains(index),
               ),
             ],
           );
@@ -832,7 +854,7 @@ class _AgentCard extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       padding: AppSpacing.cardPadding,
-                      decoration: AppTheme.brandSurface,
+                      decoration: AppTheme.brandSurfaceOf(context),
                       child: Text(
                         model.traceSummary!,
                         style: const TextStyle(
@@ -1077,7 +1099,7 @@ class _UpcomingAgentCard extends StatelessWidget {
     return Opacity(
       opacity: 0.45,
       child: Container(
-        decoration: AppTheme.cardDecoration,
+        decoration: AppTheme.cardDecorationOf(context),
         padding: AppSpacing.cardPadding,
         child: Row(
           children: [
@@ -1384,7 +1406,7 @@ class _JsonSection extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: AppSpacing.cardPadding,
-              decoration: AppTheme.codeDecoration,
+              decoration: AppTheme.codeDecorationOf(context),
               child: SelectableText(
                 _prettyPrint(json),
                 style: AppTheme.monoStyle,

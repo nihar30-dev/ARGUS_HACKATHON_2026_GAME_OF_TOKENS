@@ -51,14 +51,16 @@ Color _fg(_Kind k) {
   }
 }
 
-Color _bg(_Kind k) {
+// isDark controls idle/input surface colour; gemini/ruleBased are now
+// alpha-based so they render correctly on both dark and light backgrounds.
+Color _bg(_Kind k, bool isDark) {
   switch (k) {
     case _Kind.input:
-      return AppColors.surfacePage;
+      return isDark ? AppColors.surfaceCardDark : AppColors.surfacePage;
     case _Kind.gemini:
-      return AppColors.geminiSurface;
+      return AppColors.geminiSurface;     // 20 % alpha indigo — both modes
     case _Kind.ruleBased:
-      return AppColors.ruleBasedSurface;
+      return AppColors.ruleBasedSurface;  // 20 % alpha emerald — both modes
     case _Kind.output:
       return AppColors.brand;
   }
@@ -238,19 +240,21 @@ class _HorizNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final fg = _fg(node.kind);
-    final bg = _bg(node.kind);
+    final bg = _bg(node.kind, isDark);
     final border = _border(node.kind);
 
-    final idleFg = AppColors.textMuted;
-    final idleBg = AppColors.surfacePage;
-    final idleBorder = AppColors.outline;
+    final idleFg     = isDark ? AppColors.textMuted : AppColors.textMuted;
+    final idleBg     = isDark ? AppColors.surfaceCardDark : AppColors.surfacePage;
+    final idleBorder = isDark ? AppColors.outlineDark : AppColors.outline;
 
     final effectiveFg = (isCompleted || node.kind == _Kind.input || node.kind == _Kind.output) ? fg : idleFg;
     final effectiveBg = (isCompleted || node.kind == _Kind.input || node.kind == _Kind.output) ? bg : idleBg;
     final effectiveBorder = (isCompleted || node.kind == _Kind.input || node.kind == _Kind.output) ? border : idleBorder;
 
     final conf = run?.confidenceScore;
+    final labelColor = isDark ? const Color(0xFFF1F5F9) : AppColors.textPrimary;
 
     return GestureDetector(
       onTap: onTap,
@@ -273,16 +277,16 @@ class _HorizNode extends StatelessWidget {
                 boxShadow: isActive
                     ? [
                         BoxShadow(
-                          color: effectiveBorder.withValues(alpha: 0.35),
-                          blurRadius: 8,
+                          color: effectiveBorder.withValues(alpha: 0.40),
+                          blurRadius: 10,
                           spreadRadius: 1,
                         ),
                       ]
                     : (node.kind == _Kind.output && isCompleted)
                         ? [
                             BoxShadow(
-                              color: AppColors.brand.withValues(alpha: 0.25),
-                              blurRadius: 10,
+                              color: AppColors.brand.withValues(alpha: 0.30),
+                              blurRadius: 12,
                               offset: const Offset(0, 3),
                             )
                           ]
@@ -327,7 +331,7 @@ class _HorizNode extends StatelessWidget {
                 color: isActive
                     ? effectiveFg
                     : isCompleted
-                        ? AppColors.textPrimary
+                        ? labelColor
                         : AppColors.textMuted,
               ),
             ),
@@ -368,14 +372,22 @@ class _VertNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final fg = _fg(node.kind);
-    final bg = _bg(node.kind);
+    final bg = _bg(node.kind, isDark);
     final border = _border(node.kind);
+
+    final idleBg     = isDark ? AppColors.surfaceCardDark : AppColors.surfacePage;
+    final idleBorder = isDark ? AppColors.outlineDark : AppColors.outline;
+    final cardBg     = isDark ? AppColors.surfaceCardDark : AppColors.surfaceCard;
+    final cardBorder = isDark ? AppColors.outlineDark : AppColors.outline;
 
     final isReal = node.kind != _Kind.input && node.kind != _Kind.output;
     final effectiveFg = (isCompleted || !isReal) ? fg : AppColors.textMuted;
-    final effectiveBg = (isCompleted || !isReal) ? bg : AppColors.surfacePage;
-    final effectiveBorder = (isCompleted || !isReal) ? border : AppColors.outline;
+    final effectiveBg = (isCompleted || !isReal) ? bg : idleBg;
+    final effectiveBorder = (isCompleted || !isReal) ? border : idleBorder;
+
+    final textColor = isDark ? const Color(0xFFF1F5F9) : AppColors.textPrimary;
 
     final conf = run?.confidenceScore;
     final ms = run?.executionMs;
@@ -387,10 +399,10 @@ class _VertNode extends StatelessWidget {
         padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md, vertical: AppSpacing.smMd),
         decoration: BoxDecoration(
-          color: isActive ? effectiveBg : AppColors.surfaceCard,
+          color: isActive ? effectiveBg : cardBg,
           borderRadius: AppSpacing.roundedMd,
           border: Border.all(
-            color: isActive ? effectiveBorder : AppColors.outline,
+            color: isActive ? effectiveBorder : cardBorder,
             width: isActive ? 2 : 1,
           ),
         ),
@@ -417,7 +429,7 @@ class _VertNode extends StatelessWidget {
                         width: 13,
                         height: 13,
                         decoration: BoxDecoration(
-                          color: isCompleted ? effectiveBorder : AppColors.outline,
+                          color: isCompleted ? effectiveBorder : idleBorder,
                           shape: BoxShape.circle,
                         ),
                         alignment: Alignment.center,
@@ -444,7 +456,7 @@ class _VertNode extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: isActive ? effectiveFg : AppColors.textPrimary,
+                      color: isActive ? effectiveFg : textColor,
                     ),
                   ),
                   if (isReal) ...[
@@ -524,25 +536,19 @@ class _VertArrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lineColor = isDark ? AppColors.outlineDark : AppColors.outline;
     final isKey = nextKind == _Kind.ruleBased; // Critic is rule-based
     return Padding(
       padding: const EdgeInsets.only(left: AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 2,
-            height: 8,
-            color: AppColors.outline,
-          ),
+          Container(width: 2, height: 8, color: lineColor),
           Icon(Icons.arrow_downward_rounded,
               size: 14,
               color: isKey ? AppColors.warning : AppColors.textMuted),
-          Container(
-            width: 2,
-            height: 8,
-            color: AppColors.outline,
-          ),
+          Container(width: 2, height: 8, color: lineColor),
         ],
       ),
     );
@@ -558,6 +564,8 @@ class WorkflowLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // geminiSurface and ruleBasedSurface are now alpha-based, so they render
+    // correctly on both dark and light backgrounds without context branching.
     return const Row(
       mainAxisSize: MainAxisSize.min,
       children: [

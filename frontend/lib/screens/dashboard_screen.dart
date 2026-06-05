@@ -24,86 +24,6 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _loadingDemo = false;
 
-  // Static preview runs for the workflow section when there is no active session data.
-  // This shows the 6-agent sequential flow in a clean, educational way.
-  late final List<AgentRun> _previewRuns;
-
-  @override
-  void initState() {
-    super.initState();
-    _previewRuns = [
-      AgentRun(
-        agentName: 'OrganizationResearchAgent',
-        executionOrderIndex: 1,
-        confidenceScore: 0.92,
-        influencedBy: [],
-        usedGemini: true,
-        executionMs: 2400,
-        outputJson: '',
-      ),
-      AgentRun(
-        agentName: 'StakeholderPersonaAgent',
-        executionOrderIndex: 2,
-        confidenceScore: 0.88,
-        influencedBy: ['OrganizationResearchAgent'],
-        usedGemini: false,
-        executionMs: 150,
-        outputJson: '',
-      ),
-      AgentRun(
-        agentName: 'EngagementStrategyAgent',
-        executionOrderIndex: 3,
-        confidenceScore: 0.85,
-        influencedBy: ['OrganizationResearchAgent', 'StakeholderPersonaAgent'],
-        usedGemini: true,
-        executionMs: 3100,
-        outputJson: '',
-      ),
-      AgentRun(
-        agentName: 'ObjectionPredictionAgent',
-        executionOrderIndex: 4,
-        confidenceScore: 0.80,
-        influencedBy: [
-          'OrganizationResearchAgent',
-          'StakeholderPersonaAgent',
-          'EngagementStrategyAgent'
-        ],
-        usedGemini: true,
-        executionMs: 2800,
-        outputJson: '',
-      ),
-      AgentRun(
-        agentName: 'CriticValidatorAgent',
-        executionOrderIndex: 5,
-        confidenceScore: 0.95,
-        influencedBy: [
-          'OrganizationResearchAgent',
-          'StakeholderPersonaAgent',
-          'EngagementStrategyAgent',
-          'ObjectionPredictionAgent'
-        ],
-        usedGemini: false,
-        executionMs: 180,
-        outputJson: '',
-      ),
-      AgentRun(
-        agentName: 'FinalSynthesisAgent',
-        executionOrderIndex: 6,
-        confidenceScore: 0.90,
-        influencedBy: [
-          'OrganizationResearchAgent',
-          'StakeholderPersonaAgent',
-          'EngagementStrategyAgent',
-          'ObjectionPredictionAgent',
-          'CriticValidatorAgent'
-        ],
-        usedGemini: true,
-        executionMs: 3500,
-        outputJson: '',
-      ),
-    ];
-  }
-
   Future<void> _runDemo() async {
     setState(() => _loadingDemo = true);
     try {
@@ -162,30 +82,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          AppSpacing.gapLg,
-                          if (meetings.isEmpty)
-                            _EmptyState(onNewMeeting: _goNew, onRunDemo: _runDemo)
-                          else ...[
-                            Text(
-                              'LATEST MEETING BRIEFING',
-                              style: AppTheme.overlineStyle,
-                            ),
-                            AppSpacing.gapSm,
-                            _buildMainGrid(context, meetings.first),
-                            if (meetings.length > 1) ...[
-                              AppSpacing.gapXl,
-                              Text(
-                                'PREVIOUS BRIEFINGS',
-                                style: AppTheme.overlineStyle,
-                              ),
-                              AppSpacing.gapSm,
-                              _buildPreviousMeetingsList(meetings.skip(1).toList()),
-                            ],
-                          ],
                           AppSpacing.gapXl,
-                          _WorkflowSection(runs: _previewRuns),
+                          // Workflow preview always shown first — pure visual strip
+                          const _FadeSlide(
+                            delay: Duration(milliseconds: 60),
+                            child: _WorkflowSection(),
+                          ),
                           AppSpacing.gapXl,
-                          const _FeatureRow(),
+                          // Meetings section — reads only from repository
+                          _FadeSlide(
+                            delay: const Duration(milliseconds: 160),
+                            child: meetings.isEmpty
+                                ? _EmptyState(
+                                    onNewMeeting: _goNew,
+                                    onRunDemo: _runDemo,
+                                  )
+                                : _MeetingsSection(
+                                    meetings: meetings,
+                                    onNewMeeting: _goNew,
+                                  ),
+                          ),
+                          AppSpacing.gapXl,
+                          const _FadeSlide(
+                            delay: Duration(milliseconds: 260),
+                            child: _FeatureRow(),
+                          ),
                           AppSpacing.gapXl,
                         ],
                       ),
@@ -200,6 +121,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   PreferredSizeWidget _buildAppBar(BuildContext context) => AppBar(
         title: const AppHeader(),
         actions: [
+          const ThemeToggleButton(),
           Padding(
             padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.md, vertical: AppSpacing.sm),
@@ -240,7 +162,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               AppSpacing.gapLg,
               const Text(
-                'Initializing Multi-Agent Pipeline...',
+                'Initializing Multi-Agent Pipeline…',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 20,
@@ -263,37 +185,635 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+}
+
+// ── Fade + slide animation wrapper ───────────────────────────────────────────
+
+class _FadeSlide extends StatelessWidget {
+  final Widget child;
+  final Duration delay;
+
+  const _FadeSlide({required this.child, this.delay = Duration.zero});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: Duration(milliseconds: 420 + delay.inMilliseconds),
+      curve: Curves.easeOut,
+      builder: (context, value, inner) => Opacity(
+        opacity: value.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(0, 18 * (1 - value)),
+          child: inner,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+// ── Dot grid painter (hero background texture) ────────────────────────────────
+
+class _DotGridPainter extends CustomPainter {
+  const _DotGridPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const spacing = 30.0;
+    final paint = Paint()
+      ..color = const Color(0x123B82F6) // 7 % brand blue
+      ..style = PaintingStyle.fill;
+
+    for (double x = spacing / 2; x < size.width; x += spacing) {
+      for (double y = spacing / 2; y < size.height; y += spacing) {
+        canvas.drawCircle(Offset(x, y), 1.3, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
+}
+
+// ── Gradient CTA button ───────────────────────────────────────────────────────
+
+class _GradientButton extends StatefulWidget {
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+
+  const _GradientButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  State<_GradientButton> createState() => _GradientButtonState();
+}
+
+class _GradientButtonState extends State<_GradientButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        decoration: BoxDecoration(
+          gradient: AppColors.brandGradient,
+          borderRadius: AppSpacing.roundedMd,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.glowBrand,
+              blurRadius: _hovered ? 28 : 16,
+              spreadRadius: _hovered ? 0 : -2,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          borderRadius: AppSpacing.roundedMd,
+          child: InkWell(
+            onTap: widget.onPressed,
+            borderRadius: AppSpacing.roundedMd,
+            splashColor: Colors.white.withValues(alpha: 0.15),
+            highlightColor: Colors.white.withValues(alpha: 0.08),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xl,
+                vertical: AppSpacing.smMd,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(widget.icon, color: Colors.white, size: 17),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    widget.label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Hero ──────────────────────────────────────────────────────────────────────
+
+class _HeroSection extends StatelessWidget {
+  final VoidCallback onNewMeeting;
+  final VoidCallback onViewDemo;
+
+  const _HeroSection({
+    required this.onNewMeeting,
+    required this.onViewDemo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = Responsive.isMobile(context);
+
+    return SizedBox(
+      width: double.infinity,
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          // ── Base gradient ──────────────────────────────────────────────────
+          const Positioned.fill(
+            child: DecoratedBox(decoration: AppTheme.heroDecoration),
+          ),
+
+          // ── Dot grid texture ───────────────────────────────────────────────
+          const Positioned.fill(
+            child: RepaintBoundary(
+              child: CustomPaint(painter: _DotGridPainter()),
+            ),
+          ),
+
+          // ── Blue glow — top right ──────────────────────────────────────────
+          Positioned(
+            top: -110,
+            right: -120,
+            child: Container(
+              width: 420,
+              height: 420,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.brand.withValues(alpha: 0.20),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // ── Violet glow — bottom left ──────────────────────────────────────
+          Positioned(
+            bottom: -130,
+            left: -80,
+            child: Container(
+              width: 460,
+              height: 460,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.teal.withValues(alpha: 0.16),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // ── Indigo glow — centre ──────────────────────────────────────────
+          Positioned(
+            top: 20,
+            left: isMobile ? 80 : 300,
+            child: Container(
+              width: 320,
+              height: 260,
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.accent.withValues(alpha: 0.10),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // ── Content ────────────────────────────────────────────────────────
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? AppSpacing.lg : AppSpacing.xxxl,
+              vertical: isMobile ? AppSpacing.xxl : AppSpacing.xxxl,
+            ),
+            child: Responsive.centered(
+              context,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Hackathon badge
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeOut,
+                    builder: (_, v, child) =>
+                        Opacity(opacity: v, child: child),
+                    child: _HeroBadge(),
+                  ),
+                  AppSpacing.gapMd,
+
+                  // Title
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 480),
+                    curve: Curves.easeOut,
+                    builder: (_, v, child) => Opacity(
+                      opacity: v,
+                      child: Transform.translate(
+                          offset: Offset(0, 14 * (1 - v)), child: child),
+                    ),
+                    child: _HeroTitle(isMobile: isMobile),
+                  ),
+                  AppSpacing.gapLg,
+
+                  // Description
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 580),
+                    curve: Curves.easeOut,
+                    builder: (_, v, child) =>
+                        Opacity(opacity: v, child: child),
+                    child: const _HeroDescription(),
+                  ),
+                  AppSpacing.gapLg,
+
+                  // CTAs
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 680),
+                    curve: Curves.easeOut,
+                    builder: (_, v, child) =>
+                        Opacity(opacity: v, child: child),
+                    child: _HeroCTAs(
+                      onNewMeeting: onNewMeeting,
+                      onViewDemo: onViewDemo,
+                    ),
+                  ),
+
+                  // Agent count strip
+                  AppSpacing.gapXl,
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 780),
+                    curve: Curves.easeOut,
+                    builder: (_, v, child) =>
+                        Opacity(opacity: v, child: child),
+                    child: const _HeroAgentStrip(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: AppSpacing.roundedPill,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.tealLight, // violet dot
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          const Text(
+            'ARGUS Hackathon 2026  ·  Multi-Agent AI Platform',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroTitle extends StatelessWidget {
+  final bool isMobile;
+  const _HeroTitle({required this.isMobile});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Gradient text on "MeetWise"
+        ShaderMask(
+          shaderCallback: (bounds) =>
+              AppColors.brandGradient.createShader(bounds),
+          blendMode: BlendMode.srcIn,
+          child: Text(
+            'MeetWise',
+            style: TextStyle(
+              color: Colors.white, // masked by ShaderMask
+              fontSize: isMobile ? 44 : 58,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -2.0,
+              height: 1.0,
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'AI-Powered Meeting Intelligence',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.85),
+            fontSize: isMobile ? 17 : 23,
+            fontWeight: FontWeight.w300,
+            height: 1.3,
+            letterSpacing: -0.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroDescription extends StatelessWidget {
+  const _HeroDescription();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.07),
+        borderRadius: AppSpacing.roundedMd,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: const Text(
+        '6 specialized agents collaborate in sequence — each agent reads and challenges the outputs of every prior agent — producing a meeting strategy no single model could.',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          height: 1.6,
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroCTAs extends StatelessWidget {
+  final VoidCallback onNewMeeting;
+  final VoidCallback onViewDemo;
+  const _HeroCTAs({required this.onNewMeeting, required this.onViewDemo});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: [
+        _GradientButton(
+          onPressed: onNewMeeting,
+          icon: Icons.auto_awesome,
+          label: 'New Meeting Intelligence',
+        ),
+        OutlinedButton.icon(
+          onPressed: onViewDemo,
+          icon: const Icon(Icons.play_circle_outline, size: 17),
+          label: const Text('Run Apollo Hospitals Demo'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xl, vertical: AppSpacing.smMd),
+            textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroAgentStrip extends StatelessWidget {
+  const _HeroAgentStrip();
+
+  static const _steps = [
+    (Icons.person_rounded, 'You'),
+    (Icons.search_rounded, 'Research'),
+    (Icons.person_pin_rounded, 'Persona'),
+    (Icons.lightbulb_rounded, 'Strategy'),
+    (Icons.warning_amber_rounded, 'Objection'),
+    (Icons.fact_check_rounded, 'Critic'),
+    (Icons.summarize_rounded, 'Final Brief'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < _steps.length; i++) ...[
+            _StepPill(icon: _steps[i].$1, label: _steps[i].$2, isFirst: i == 0, isLast: i == _steps.length - 1),
+            if (i < _steps.length - 1)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(Icons.chevron_right_rounded,
+                    size: 14,
+                    color: Colors.white.withValues(alpha: 0.30)),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StepPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isFirst;
+  final bool isLast;
+
+  const _StepPill({
+    required this.icon,
+    required this.label,
+    this.isFirst = false,
+    this.isLast = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final highlight = isFirst || isLast;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: highlight
+            ? Colors.white.withValues(alpha: 0.14)
+            : Colors.white.withValues(alpha: 0.06),
+        borderRadius: AppSpacing.roundedPill,
+        border: Border.all(
+          color: highlight
+              ? Colors.white.withValues(alpha: 0.30)
+              : Colors.white.withValues(alpha: 0.10),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon,
+              size: 12,
+              color: highlight
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.65)),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
+              color: highlight
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.65),
+              letterSpacing: 0.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Workflow section (pure visual preview — no live run data) ─────────────────
+
+class _WorkflowSection extends StatelessWidget {
+  const _WorkflowSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = Responsive.isMobile(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        if (isMobile)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('AGENT WORKFLOW', style: AppTheme.overlineStyle),
+              AppSpacing.gapXs,
+              Text(
+                'Each agent reads all prior outputs — interdependency is the strategy.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              AppSpacing.gapSm,
+              const WorkflowLegend(),
+            ],
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('AGENT WORKFLOW', style: AppTheme.overlineStyle),
+                    AppSpacing.gapXs,
+                    Text(
+                      'Each agent reads all prior outputs — interdependency is the strategy.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              AppSpacing.hGapLg,
+              const WorkflowLegend(),
+            ],
+          ),
+        AppSpacing.gapMd,
+
+        // Idle workflow diagram — runs: null renders all nodes in preview state
+        Container(
+          decoration: AppTheme.cardDecorationOf(context),
+          child: const TraceWorkflowWidget(
+            runs: null,
+            direction: Axis.horizontal,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Meetings section (data from repository only) ──────────────────────────────
+
+class _MeetingsSection extends StatelessWidget {
+  final List<SessionResponse> meetings;
+  final VoidCallback onNewMeeting;
+
+  const _MeetingsSection({
+    required this.meetings,
+    required this.onNewMeeting,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('LATEST MEETING BRIEFING', style: AppTheme.overlineStyle),
+        AppSpacing.gapSm,
+        _buildMainGrid(context, meetings.first),
+        if (meetings.length > 1) ...[
+          AppSpacing.gapXl,
+          Text('PREVIOUS BRIEFINGS', style: AppTheme.overlineStyle),
+          AppSpacing.gapSm,
+          _buildPreviousMeetingsList(context, meetings.skip(1).toList()),
+        ],
+      ],
+    );
+  }
 
   Widget _buildMainGrid(BuildContext context, SessionResponse session) {
     final isMobile = Responsive.isMobile(context);
     final cards = [
       Expanded(
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 400),
-          builder: (context, value, child) => Opacity(
-            opacity: value,
-            child: Transform.translate(
-              offset: Offset(0, 15 * (1 - value)),
-              child: child,
-            ),
-          ),
+        child: _FadeSlide(
+          delay: const Duration(milliseconds: 80),
           child: _RecentMeetingCard(session: session),
         ),
       ),
       if (!isMobile) AppSpacing.hGapLg,
       if (isMobile) AppSpacing.gapMd,
       Expanded(
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 400),
-          builder: (context, value, child) => Opacity(
-            opacity: value,
-            child: Transform.translate(
-              offset: Offset(0, 15 * (1 - value)),
-              child: child,
-            ),
-          ),
+        child: _FadeSlide(
+          delay: const Duration(milliseconds: 140),
           child: _AgentStatsCard(session: session),
         ),
       ),
@@ -304,7 +824,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : Row(crossAxisAlignment: CrossAxisAlignment.start, children: cards);
   }
 
-  Widget _buildPreviousMeetingsList(List<SessionResponse> previousMeetings) {
+  Widget _buildPreviousMeetingsList(
+      BuildContext context, List<SessionResponse> previousMeetings) {
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -319,18 +840,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     .reduce((a, b) => a + b) /
                 session.agentRuns.length;
 
-        return TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0.0, end: 1.0),
-          duration: Duration(milliseconds: 300 + (index * 100)),
-          builder: (context, value, child) => Opacity(
-            opacity: value,
-            child: Transform.translate(
-              offset: Offset(0, 10 * (1 - value)),
-              child: child,
-            ),
-          ),
+        return _FadeSlide(
+          delay: Duration(milliseconds: 60 * index),
           child: Container(
-            decoration: AppTheme.cardDecoration,
+            decoration: AppTheme.cardDecorationOf(context),
             child: ListTile(
               leading: Container(
                 width: 32,
@@ -392,144 +905,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// ── Hero ──────────────────────────────────────────────────────────────────────
-
-class _HeroSection extends StatelessWidget {
-  final VoidCallback onNewMeeting;
-  final VoidCallback onViewDemo;
-
-  const _HeroSection({
-    required this.onNewMeeting,
-    required this.onViewDemo,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isMobile = Responsive.isMobile(context);
-
-    return Container(
-      decoration: AppTheme.heroDecoration.copyWith(
-        borderRadius: BorderRadius.zero,
-      ),
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? AppSpacing.lg : AppSpacing.xxxl,
-        vertical: isMobile ? AppSpacing.xxl : AppSpacing.xxxl,
-      ),
-      child: Responsive.centered(
-        context,
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Label chip
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: AppSpacing.roundedPill,
-                border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.auto_awesome, color: Colors.white, size: 11),
-                  SizedBox(width: AppSpacing.xs),
-                  Text(
-                    'ARGUS Hackathon 2026  ·  Multi-Agent AI',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            AppSpacing.gapMd,
-
-            // Title
-            const Text(
-              'MeetWise',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 48,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -1.5,
-                height: 1.05,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'AI-Powered Multi-Agent\nMeeting Intelligence Platform',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.85),
-                fontSize: isMobile ? 16 : 20,
-                fontWeight: FontWeight.w400,
-                height: 1.4,
-              ),
-            ),
-            AppSpacing.gapLg,
-
-            // Sub-text
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: AppSpacing.roundedMd,
-              ),
-              child: const Text(
-                '6 specialized agents collaborate — each reading and challenging prior outputs — to produce a strategy no single model could.',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  height: 1.5,
-                ),
-              ),
-            ),
-            AppSpacing.gapLg,
-
-            // CTAs
-            Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              children: [
-                FilledButton.icon(
-                  onPressed: onNewMeeting,
-                  icon: const Icon(Icons.auto_awesome, size: 18),
-                  label: const Text('New Meeting Intelligence'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: AppColors.brand,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.xl, vertical: AppSpacing.smMd),
-                    textStyle: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onViewDemo,
-                  icon: const Icon(Icons.play_circle_outline, size: 18),
-                  label: const Text('Run Demo (Apollo Hospitals)'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.xl, vertical: AppSpacing.smMd),
-                    textStyle: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ── Empty State ───────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
@@ -549,7 +924,7 @@ class _EmptyState extends StatelessWidget {
         horizontal: AppSpacing.xl,
         vertical: AppSpacing.xxl,
       ),
-      decoration: AppTheme.cardDecoration,
+      decoration: AppTheme.cardDecorationOf(context),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -567,24 +942,24 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
           AppSpacing.gapMd,
-          const Text(
-            'No Meeting Strategy Generated Yet',
+          Text(
+            'No Meeting Strategies Yet',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 6),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Text(
-              'Generate your first meeting intelligence brief. Six specialized agents will collaborate to analyze your prospect, predict objections, and construct an engagement playbook.',
+              'Generate your first meeting intelligence brief. Six specialized agents will collaborate to analyse your prospect, predict objections, and construct an engagement playbook.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
-                color: AppColors.textSecondary,
-                height: 1.5,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.55,
               ),
             ),
           ),
@@ -592,16 +967,17 @@ class _EmptyState extends StatelessWidget {
           Wrap(
             spacing: AppSpacing.sm,
             runSpacing: AppSpacing.sm,
+            alignment: WrapAlignment.center,
             children: [
               FilledButton.icon(
                 onPressed: onNewMeeting,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Prepare Meeting Strategy'),
+                icon: const Icon(Icons.auto_awesome, size: 16),
+                label: const Text('New Meeting Intelligence'),
               ),
               OutlinedButton.icon(
                 onPressed: onRunDemo,
                 icon: const Icon(Icons.play_circle_outline, size: 16),
-                label: const Text('Try Sample Demo'),
+                label: const Text('Try Apollo Hospitals Demo'),
               ),
             ],
           ),
@@ -630,7 +1006,7 @@ class _RecentMeetingCard extends StatelessWidget {
         session.agentRuns.fold<int>(0, (s, r) => s + r.executionMs);
 
     return Container(
-      decoration: AppTheme.cardDecoration,
+      decoration: AppTheme.cardDecorationOf(context),
       padding: AppSpacing.cardPaddingLg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -663,7 +1039,8 @@ class _RecentMeetingCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       [
-                        if (session.stakeholderRole != null) session.stakeholderRole!,
+                        if (session.stakeholderRole != null)
+                          session.stakeholderRole!,
                         'Briefing Session',
                       ].join(' · '),
                       style: const TextStyle(
@@ -789,18 +1166,18 @@ class _AgentStatsCard extends StatelessWidget {
             session.agentRuns.length;
 
     return Container(
-      decoration: AppTheme.cardDecoration,
+      decoration: AppTheme.cardDecorationOf(context),
       padding: AppSpacing.cardPaddingLg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'PIPELINE METRICS',
             style: AppTheme.overlineStyle,
           ),
           AppSpacing.gapMd,
 
-          // Big stat grid — 2×2
+          // Stat grid — 2×2
           Row(
             children: [
               Expanded(
@@ -923,67 +1300,6 @@ class _AgentStatsCard extends StatelessWidget {
   }
 }
 
-// ── Workflow section ──────────────────────────────────────────────────────────
-
-class _WorkflowSection extends StatelessWidget {
-  final List<AgentRun> runs;
-
-  const _WorkflowSection({required this.runs});
-
-  @override
-  Widget build(BuildContext context) {
-    final isMobile = Responsive.isMobile(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (isMobile)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('AGENT WORKFLOW', style: AppTheme.overlineStyle),
-              AppSpacing.gapXs,
-              Text(
-                'Each agent reads all prior outputs — interdependency is the strategy.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              AppSpacing.gapSm,
-              const WorkflowLegend(),
-            ],
-          )
-        else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('AGENT WORKFLOW', style: AppTheme.overlineStyle),
-                    AppSpacing.gapXs,
-                    Text(
-                      'Each agent reads all prior outputs — interdependency is the strategy.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              AppSpacing.hGapLg,
-              const WorkflowLegend(),
-            ],
-          ),
-        AppSpacing.gapMd,
-        Container(
-          decoration: AppTheme.cardDecoration,
-          child: TraceWorkflowWidget(
-            runs: runs,
-            direction: Axis.horizontal,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 // ── Feature row ───────────────────────────────────────────────────────────────
 
 class _FeatureRow extends StatelessWidget {
@@ -1069,7 +1385,7 @@ class _FeatureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: AppTheme.cardDecoration,
+      decoration: AppTheme.cardDecorationOf(context),
       padding: AppSpacing.cardPaddingLg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1136,8 +1452,8 @@ class _StatusBadge extends StatelessWidget {
           const SizedBox(width: AppSpacing.xs),
           Text(
             status,
-            style: TextStyle(
-                color: fg, fontSize: 11, fontWeight: FontWeight.w700),
+            style:
+                TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -1160,9 +1476,7 @@ class _MetricTile extends StatelessWidget {
         children: [
           Text(value,
               style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: color)),
+                  fontSize: 18, fontWeight: FontWeight.w800, color: color)),
           const SizedBox(height: 2),
           Text(label,
               textAlign: TextAlign.center,
@@ -1205,8 +1519,7 @@ class _AgentConfidenceRow extends StatelessWidget {
               value: conf,
               minHeight: 6,
               backgroundColor: AppColors.outline,
-              valueColor:
-                  AlwaysStoppedAnimation(AppColors.forConfidence(conf)),
+              valueColor: AlwaysStoppedAnimation(AppColors.forConfidence(conf)),
             ),
           ),
         ),

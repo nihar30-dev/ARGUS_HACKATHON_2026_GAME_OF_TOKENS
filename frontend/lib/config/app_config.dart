@@ -45,7 +45,7 @@ abstract class AppConfig {
   /// Web note: the backend must have CORS configured to allow requests from
   /// the Flutter web origin (e.g. http://localhost:8082 in local dev).
   // ↓ change this URL to point at your backend ↓
-  static const String backendBaseUrl = 'http://192.1.170.10:8081/api';
+  static const String backendBaseUrl = 'http://192.1.170.32:8081/api';
 
   // ── Request timeout ───────────────────────────────────────────────────────
 

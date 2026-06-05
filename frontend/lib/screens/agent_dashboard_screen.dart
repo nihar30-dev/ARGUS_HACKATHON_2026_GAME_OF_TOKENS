@@ -3,6 +3,7 @@ import '../app/routes.dart';
 import '../models/session_response.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../widgets/app_header.dart';
 import '../widgets/error_view.dart';
 
 class AgentDashboardScreen extends StatelessWidget {
@@ -23,6 +24,8 @@ class AgentDashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.account_tree_outlined),
             label: const Text('Trace View'),
           ),
+          const ThemeToggleButton(),
+          const SizedBox(width: 4),
         ],
       ),
       body: Column(

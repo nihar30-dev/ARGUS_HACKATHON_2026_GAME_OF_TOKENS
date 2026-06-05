@@ -6,12 +6,6 @@ import '../theme/app_spacing.dart';
 // ── Agent type badge ──────────────────────────────────────────────────────────
 
 /// Gemini AI / Rule-based pill badge.
-///
-/// [active] — when false the badge renders in a dimmed idle state (used by
-/// [TraceWorkflowWidget] for agents that have not yet run).
-///
-/// Replaces the private `_TypeBadge` in `agent_trace_screen.dart` and
-/// `_TypeTag` in `trace_workflow_widget.dart`.
 class AgentTypeBadge extends StatelessWidget {
   final bool isGemini;
   final bool active;
@@ -24,16 +18,22 @@ class AgentTypeBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final activeFg = isGemini ? AppColors.gemini : AppColors.ruleBased;
-    final activeBg =
-        isGemini ? AppColors.geminiSurface : AppColors.ruleBasedSurface;
-    final fg = active ? activeFg : AppColors.textMuted;
-    final bg = active ? activeBg : AppColors.surfacePage;
+    final activeBg = isGemini ? AppColors.geminiSurface : AppColors.ruleBasedSurface;
+    final idleFg   = isDark ? const Color(0xFF64748B) : AppColors.textMuted;
+    final idleBg   = isDark ? AppColors.surfaceCodeDark : AppColors.surfacePage;
+
+    final fg = active ? activeFg : idleFg;
+    final bg = active ? activeBg : idleBg;
 
     return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm, vertical: 2),
-      decoration: BoxDecoration(color: bg, borderRadius: AppSpacing.roundedPill),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: AppSpacing.roundedPill,
+        border: Border.all(color: fg.withValues(alpha: 0.25)),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -42,11 +42,14 @@ class AgentTypeBadge extends StatelessWidget {
             size: 10,
             color: fg,
           ),
-          const SizedBox(width: AppSpacing.xxs),
+          const SizedBox(width: AppSpacing.xxs + 1),
           Text(
             isGemini ? 'Gemini AI' : 'Rule-based',
             style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.w600, color: fg),
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
           ),
         ],
       ),
@@ -57,13 +60,9 @@ class AgentTypeBadge extends StatelessWidget {
 // ── Agent card ────────────────────────────────────────────────────────────────
 
 /// Compact horizontal card showing a single agent's order, name, type, and
-/// confidence score.
-///
-/// Use in agent overview lists or dashboard summaries.
+/// confidence score. Fully dark-mode aware.
 class AgentCard extends StatelessWidget {
   final AgentRun run;
-
-  /// Highlights the card with a colored border when true.
   final bool active;
   final VoidCallback? onTap;
 
@@ -76,42 +75,56 @@ class AgentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final conf = run.confidenceScore;
-    final fg = run.usedGemini ? AppColors.gemini : AppColors.ruleBased;
-    final bg =
-        run.usedGemini ? AppColors.geminiSurface : AppColors.ruleBasedSurface;
-    final borderColor =
-        active ? fg : AppColors.outline;
+    final conf        = run.confidenceScore;
+    final typeFg      = run.usedGemini ? AppColors.gemini  : AppColors.ruleBased;
+    final typeBg      = run.usedGemini ? AppColors.geminiSurface : AppColors.ruleBasedSurface;
+    final isDark      = Theme.of(context).brightness == Brightness.dark;
+    final surfaceColor = isDark ? AppColors.surfaceCardDark : AppColors.surfaceCard;
+    final outlineColor = isDark ? AppColors.outlineDark     : AppColors.outline;
+    final borderColor  = active ? typeFg : outlineColor;
+    final borderWidth  = active ? 2.0 : 1.0;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: AppSpacing.cardPadding,
         decoration: BoxDecoration(
-          color: AppColors.surfaceCard,
+          color: surfaceColor,
           borderRadius: AppSpacing.roundedMd,
-          border: Border.all(color: borderColor, width: active ? 2 : 1),
+          border: Border.all(color: borderColor, width: borderWidth),
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: AppColors.shadowXs,
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
         child: Row(
           children: [
-            // Order bubble
+            // ── Order bubble ───────────────────────────────────────────────
             Container(
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: bg,
+                color: typeBg,
                 shape: BoxShape.circle,
-                border: Border.all(color: fg, width: 1.5),
+                border: Border.all(color: typeFg, width: 1.5),
               ),
               alignment: Alignment.center,
               child: Text(
                 '${run.executionOrderIndex}',
                 style: TextStyle(
-                    color: fg, fontSize: 12, fontWeight: FontWeight.w800),
+                  color: typeFg,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
             AppSpacing.hGapMd,
-            // Name + badge
+            // ── Name + badge ───────────────────────────────────────────────
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -119,26 +132,28 @@ class AgentCard extends StatelessWidget {
                   Text(
                     run.displayName,
                     style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   AgentTypeBadge(isGemini: run.usedGemini),
                 ],
               ),
             ),
-            // Confidence
+            // ── Confidence ─────────────────────────────────────────────────
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   '${(conf * 100).toStringAsFixed(0)}%',
                   style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.forConfidence(conf)),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.forConfidence(conf),
+                  ),
                 ),
+                const SizedBox(height: 3),
                 ClipRRect(
                   borderRadius: AppSpacing.roundedPill,
                   child: SizedBox(

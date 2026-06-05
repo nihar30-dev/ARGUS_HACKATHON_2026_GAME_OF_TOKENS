@@ -9,6 +9,7 @@ import '../models/session_response.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_header.dart';
 import '../widgets/error_view.dart';
 import '../widgets/readiness_score_card.dart';
 import '../widgets/section_card.dart';
@@ -313,6 +314,7 @@ class _FinalReportScreenState extends State<FinalReportScreen> {
             tooltip: 'Copy report',
             icon: const Icon(Icons.copy_outlined, size: 18),
           ),
+          const ThemeToggleButton(),
           const SizedBox(width: AppSpacing.sm),
         ],
       );
@@ -637,7 +639,7 @@ class _ExecutiveBriefCard extends StatelessWidget {
       subtitle: 'AI-synthesised by FinalSynthesisAgent · Critic revision applied',
       child: Container(
         padding: AppSpacing.cardPadding,
-        decoration: AppTheme.brandSurface,
+        decoration: AppTheme.brandSurfaceOf(context),
         child: Text(
           brief,
           style: const TextStyle(

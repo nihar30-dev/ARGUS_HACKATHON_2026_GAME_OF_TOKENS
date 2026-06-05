@@ -11,6 +11,7 @@ import '../services/meeting_repository.dart';
 import '../services/pipeline_socket_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../widgets/app_header.dart';
 
 // ── Agent definitions ─────────────────────────────────────────────────────────
 
@@ -257,6 +258,7 @@ class _PipelineLiveScreenState extends State<PipelineLiveScreen> {
           ],
         ),
         automaticallyImplyLeading: true,
+        actions: const [ThemeToggleButton(), SizedBox(width: 4)],
       ),
       body: Column(
         children: [

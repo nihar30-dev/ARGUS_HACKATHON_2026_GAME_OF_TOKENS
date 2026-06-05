@@ -3,17 +3,7 @@ import '../theme/app_spacing.dart';
 
 /// Compact metric tile — icon on the left, large value + label on the right.
 ///
-/// Extracted from the private `_BigStatTile` in `dashboard_screen.dart`.
-///
-/// ```dart
-/// InfoCard(
-///   value: '6',
-///   label: 'Total Agents',
-///   icon: Icons.smart_toy_outlined,
-///   foreground: AppColors.brand,
-///   background: AppColors.brandSubtle,
-/// )
-/// ```
+/// Automatically adjusts border tint for dark mode using [foreground] alpha.
 class InfoCard extends StatelessWidget {
   final String value;
   final String label;
@@ -37,10 +27,21 @@ class InfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: background,
         borderRadius: AppSpacing.roundedMd,
+        border: Border.all(
+          color: foreground.withValues(alpha: 0.18),
+        ),
       ),
       child: Row(
         children: [
-          Icon(icon, color: foreground, size: 20),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: foreground.withValues(alpha: 0.12),
+              borderRadius: AppSpacing.roundedSm,
+            ),
+            child: Icon(icon, color: foreground, size: 18),
+          ),
           AppSpacing.hGapSm,
           Expanded(
             child: Column(
@@ -61,8 +62,9 @@ class InfoCard extends StatelessWidget {
                   maxLines: 1,
                   style: TextStyle(
                     fontSize: 11,
-                    color: foreground.withValues(alpha: 0.75),
-                    fontWeight: FontWeight.w500,
+                    color: foreground.withValues(alpha: 0.7),
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
                   ),
                 ),
               ],

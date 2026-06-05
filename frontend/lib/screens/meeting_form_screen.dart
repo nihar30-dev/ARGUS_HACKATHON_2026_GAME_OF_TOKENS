@@ -9,6 +9,7 @@ import '../services/meeting_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_header.dart';
 import '../widgets/error_view.dart';
 import '../widgets/primary_button.dart';
 
@@ -25,6 +26,7 @@ const _kAgentNames = [
   'Engagement Strategy Agent',
   'Objection Prediction Agent',
   'Critic Validator Agent',
+  'Strategy Refinement Agent',
   'Final Synthesis Agent',
 ];
 
@@ -34,6 +36,7 @@ const _kLoadingDescriptions = [
   'Framing MEDplat positioning as a unification layer, not vendor replacement...',
   'Anticipating pushback on integration timeline and HL7 FHIR compliance...',
   'Checking strategy and objection plays for compliance and claims validation...',
+  'Refining engagement strategy based on critic feedback and objection insights...',
   'Synthesizing final executive briefing document and strategic playbook...',
 ];
 
@@ -242,21 +245,15 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
   }
 
   PreferredSizeWidget _appBar() => AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.auto_awesome, color: AppColors.brand, size: 18),
-            AppSpacing.hGapSm,
-            const Text('MeetWise'),
-          ],
-        ),
+        title: const AppHeader(),
+        actions: const [ThemeToggleButton(), SizedBox(width: 4)],
       );
 
   // ── Form card ─────────────────────────────────────────────────────────────
 
   Widget _buildFormCard() {
     return Container(
-      decoration: AppTheme.cardDecoration,
+      decoration: AppTheme.cardDecorationOf(context),
       padding: AppSpacing.cardPaddingLg,
       child: Form(
         key: _formKey,
@@ -392,7 +389,7 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
   Widget _buildPipelinePreview() {
     return Container(
       width: double.infinity,
-      decoration: AppTheme.cardDecoration,
+      decoration: AppTheme.cardDecorationOf(context),
       padding: AppSpacing.cardPaddingLg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -408,7 +405,7 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
               index: i + 1,
               name: _kAgentNames[i],
               isLast: i == _kAgentNames.length - 1,
-              isGemini: i != 1 && i != 4, // 2 and 5 are rule-based
+              isGemini: i != 1 && i != 4, // Persona(1) and Critic(4) are rule-based
             ),
         ],
       ),
@@ -434,13 +431,11 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
         child: Container(
           width: 480,
           margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceCard,
-            borderRadius: AppSpacing.roundedLg,
+          decoration: AppTheme.cardDecorationOf(context).copyWith(
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 24,
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 40,
                 spreadRadius: 4,
               ),
             ],
@@ -460,12 +455,12 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
                     ),
                   ),
                   AppSpacing.gapLg,
-                  const Text(
+                  Text(
                     'Multi-Agent Pipeline Executing',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -481,7 +476,7 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
                   Container(
                     width: double.infinity,
                     padding: AppSpacing.cardPadding,
-                    decoration: AppTheme.brandSurface,
+                    decoration: AppTheme.brandSurfaceOf(context),
                     child: Text(
                       activeDescription,
                       textAlign: TextAlign.center,
@@ -596,7 +591,7 @@ class _HeroBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: AppSpacing.cardPaddingLg,
-      decoration: AppTheme.brandSurface,
+      decoration: AppTheme.brandSurfaceOf(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -637,19 +632,22 @@ class _HeroBanner extends StatelessWidget {
             ],
           ),
           AppSpacing.gapSm,
-          const Text(
+          Text(
             'Meeting Strategy Generator',
             style: TextStyle(
-              color: AppColors.textPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w800,
               fontSize: 22,
             ),
           ),
           AppSpacing.gapXs,
-          const Text(
-            'Provide the target organization and details below. Six cooperative agents will build, Objection-proof, and validate a customized strategy.',
+          Text(
+            'Provide the target organization and details below. Six cooperative agents will build, objection-proof, and validate a customized strategy.',
             style: TextStyle(
-                color: AppColors.textSecondary, fontSize: 13, height: 1.55),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 13,
+              height: 1.55,
+            ),
           ),
         ],
       ),
@@ -673,8 +671,11 @@ class _SectionHeader extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           Text(
             description!,
-            style: const TextStyle(
-                color: AppColors.textSecondary, fontSize: 12, height: 1.5),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
+              height: 1.5,
+            ),
           ),
         ],
       ],
@@ -724,7 +725,7 @@ class _PreviewStepperRow extends StatelessWidget {
                 Expanded(
                   child: Container(
                     width: 1.5,
-                    color: AppColors.outline,
+                    color: Theme.of(context).colorScheme.outline,
                     margin: const EdgeInsets.symmetric(vertical: 4),
                   ),
                 ),
@@ -741,7 +742,6 @@ class _PreviewStepperRow extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
                     ),
                   ),
                   AppSpacing.hGapSm,

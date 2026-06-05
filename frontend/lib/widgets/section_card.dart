@@ -4,19 +4,7 @@ import '../theme/app_spacing.dart';
 import '../theme/app_theme.dart';
 
 /// Card with a coloured icon header, optional subtitle, and content area.
-///
-/// Extracted from the private `_Section` in `final_report_screen.dart`.
-///
-/// ```dart
-/// SectionCard(
-///   icon: Icons.help_outline_rounded,
-///   iconColor: AppColors.brand,
-///   iconBg: AppColors.brandSubtle,
-///   title: 'Questions to Ask',
-///   subtitle: '7 questions',
-///   child: _myContent,
-/// )
-/// ```
+/// Fully dark-mode aware via [AppTheme.cardDecorationOf].
 class SectionCard extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
@@ -24,6 +12,7 @@ class SectionCard extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget child;
+  final EdgeInsets? contentPadding;
 
   const SectionCard({
     super.key,
@@ -33,31 +22,37 @@ class SectionCard extends StatelessWidget {
     required this.title,
     this.subtitle,
     required this.child,
+    this.contentPadding,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? AppColors.outlineDark : AppColors.outline;
+    final subtitleColor = Theme.of(context).colorScheme.onSurfaceVariant;
+
     return Container(
-      decoration: AppTheme.cardDecoration,
+      decoration: AppTheme.cardDecorationOf(context),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header row
+          // ── Header ────────────────────────────────────────────────────────
           Container(
             padding: AppSpacing.cardPadding,
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.outline)),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: borderColor)),
             ),
             child: Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
-                      color: iconBg,
-                      borderRadius: AppSpacing.roundedSm),
-                  child: Icon(icon, color: iconColor, size: 16),
+                    color: iconBg,
+                    borderRadius: AppSpacing.roundedSm,
+                  ),
+                  child: Icon(icon, color: iconColor, size: 17),
                 ),
                 AppSpacing.hGapMd,
                 Expanded(
@@ -67,17 +62,15 @@ class SectionCard extends StatelessWidget {
                       Text(
                         title,
                         style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       if (subtitle != null) ...[
                         const SizedBox(height: 1),
                         Text(
                           subtitle!,
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textMuted),
+                          style: TextStyle(fontSize: 12, color: subtitleColor),
                         ),
                       ],
                     ],
@@ -86,9 +79,9 @@ class SectionCard extends StatelessWidget {
               ],
             ),
           ),
-          // Content
+          // ── Content ───────────────────────────────────────────────────────
           Padding(
-            padding: AppSpacing.cardPaddingLg,
+            padding: contentPadding ?? AppSpacing.cardPaddingLg,
             child: child,
           ),
         ],
