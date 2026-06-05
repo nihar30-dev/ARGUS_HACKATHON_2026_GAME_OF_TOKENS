@@ -22,8 +22,13 @@ class ApiService {
   // Override via the constructor only in tests.
   final String baseUrl;
 
-  ApiService({String? baseUrl})
-      : baseUrl = baseUrl ?? AppConfig.backendBaseUrl;
+  /// Optional callback that returns the current Bearer token.
+  /// Called on every request so token changes propagate automatically.
+  final String? Function()? _getToken;
+
+  ApiService({String? baseUrl, String? Function()? tokenProvider})
+      : baseUrl = baseUrl ?? AppConfig.backendBaseUrl,
+        _getToken = tokenProvider;
 
   // ── Endpoints ──────────────────────────────────────────────────────────────
 
@@ -152,10 +157,14 @@ class ApiService {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  static const Map<String, String> _jsonHeaders = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
+  Map<String, String> get _jsonHeaders {
+    final token = _getToken?.call();
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
 
   SessionResponse _parseSession(http.Response res, String label) {
     _assertSuccess(res, label);

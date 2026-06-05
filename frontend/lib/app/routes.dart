@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/pipeline_message.dart';
 import '../models/session_response.dart';
 import '../screens/dashboard_screen.dart';
+import '../screens/login_screen.dart';
+import '../screens/register_screen.dart';
+import '../screens/past_meetings_screen.dart';
 import '../screens/meeting_form_screen.dart';
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/agent_trace_screen.dart';
@@ -12,17 +15,26 @@ import '../theme/app_spacing.dart';
 import '../widgets/error_view.dart';
 
 class Routes {
-  static const String home       = '/';
-  static const String newMeeting = '/new';
-  static const String live       = '/live';
-  static const String dashboard  = '/dashboard';
-  static const String trace      = '/trace';
-  static const String report     = '/report';
+  static const String home         = '/';
+  static const String login        = '/login';
+  static const String register     = '/register';
+  static const String pastMeetings = '/past-meetings';
+  static const String newMeeting   = '/new';
+  static const String live         = '/live';
+  static const String dashboard    = '/dashboard';
+  static const String trace        = '/trace';
+  static const String report       = '/report';
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case home:
         return MaterialPageRoute(builder: (_) => const DashboardScreen());
+      case login:
+        return MaterialPageRoute(builder: (_) => const LoginScreen());
+      case register:
+        return MaterialPageRoute(builder: (_) => const RegisterScreen());
+      case pastMeetings:
+        return MaterialPageRoute(builder: (_) => const PastMeetingsScreen());
       case newMeeting:
         return MaterialPageRoute(builder: (_) => const MeetingFormScreen());
       case live:

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app/routes.dart';
 import '../core/responsive.dart';
 import '../models/session_response.dart';
+import '../services/auth_service.dart';
 import '../services/meeting_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -122,6 +123,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: const AppHeader(),
         actions: [
           const ThemeToggleButton(),
+          Consumer<AuthService>(
+            builder: (ctx, auth, _) => auth.isLoggedIn
+                ? _UserMenu(auth: auth)
+                : TextButton.icon(
+                    onPressed: () =>
+                        Navigator.pushNamed(ctx, Routes.login),
+                    icon: const Icon(Icons.login_rounded, size: 16),
+                    label: const Text('Sign In'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.brand,
+                      textStyle: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.md, vertical: AppSpacing.sm),
@@ -1489,6 +1505,99 @@ class _MetricTile extends StatelessWidget {
     );
   }
 }
+
+// ── Auth user menu (shown in AppBar when logged in) ───────────────────────────
+
+class _UserMenu extends StatelessWidget {
+  final AuthService auth;
+  const _UserMenu({required this.auth});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = auth.currentUser?.name ?? 'Account';
+    return PopupMenuButton<String>(
+      tooltip: name,
+      offset: const Offset(0, 44),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: AppColors.brandSubtle,
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                style: const TextStyle(
+                  color: AppColors.brand,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              name,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down_rounded,
+                size: 18, color: AppColors.textSecondary),
+          ],
+        ),
+      ),
+      onSelected: (value) async {
+        if (value == 'history') {
+          Navigator.pushNamed(context, Routes.pastMeetings);
+        } else if (value == 'logout') {
+          await auth.logout();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Signed out successfully')),
+            );
+          }
+        }
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          enabled: false,
+          child: Text(
+            auth.currentUser?.email ?? '',
+            style: const TextStyle(
+                fontSize: 12, color: AppColors.textMuted),
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'history',
+          child: Row(
+            children: [
+              Icon(Icons.history_rounded, size: 16, color: AppColors.brand),
+              SizedBox(width: 10),
+              Text('My Past Meetings'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'logout',
+          child: Row(
+            children: [
+              Icon(Icons.logout_rounded, size: 16, color: AppColors.danger),
+              SizedBox(width: 10),
+              Text('Sign Out',
+                  style: TextStyle(color: AppColors.danger)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Agent confidence row ──────────────────────────────────────────────────────
 
 class _AgentConfidenceRow extends StatelessWidget {
   final AgentRun run;

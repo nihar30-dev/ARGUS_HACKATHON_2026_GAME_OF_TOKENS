@@ -5,7 +5,9 @@ export 'api_service.dart' show ApiException;
 import '../config/app_config.dart';
 import '../models/pipeline_message.dart';
 import '../models/session_response.dart';
+import '../models/user_model.dart';
 import 'api_service.dart';
+import 'auth_service.dart';
 import 'mock_meeting_service.dart';
 
 /// Single data-access point for all meeting operations.
@@ -31,9 +33,14 @@ class MeetingRepository {
   final MockMeetingService _mock;
   final List<SessionResponse> _recentMeetings = [];
 
-  MeetingRepository({ApiService? api, MockMeetingService? mock})
-      : _api = api ?? ApiService(),
+  MeetingRepository({ApiService? api, MockMeetingService? mock, AuthService? authService})
+      : _api = api ?? ApiService(tokenProvider: () => authService?.token),
         _mock = mock ?? MockMeetingService();
+
+  /// GET /api/users/me/meetings — all meetings for the signed-in user.
+  Future<List<UserMeeting>> getMyMeetings(AuthService auth) {
+    return auth.getMyMeetings();
+  }
 
   List<SessionResponse> get recentMeetings => List.unmodifiable(_recentMeetings);
 

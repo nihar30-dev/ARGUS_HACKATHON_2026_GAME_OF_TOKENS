@@ -43,16 +43,21 @@ public class MeetingOrchestrationService {
     // -----------------------------------------------------------------------
 
     public MeetingStartResponseDTO orchestrate(MeetingRequestDTO dto) {
+        return orchestrate(dto, null);
+    }
+
+    public MeetingStartResponseDTO orchestrate(MeetingRequestDTO dto, UUID userId) {
         MeetingRequest meeting = meetingRequestRepository.save(MeetingRequest.builder()
                 .organizationName(dto.organizationName())
                 .stakeholderRole(dto.stakeholderRole())
                 .meetingObjective(dto.meetingObjective())
                 .offeringDescription(dto.offeringDescription())
+                .userId(userId)
                 .status("RUNNING")
                 .build());
 
         self.runPipelineAsync(meeting.getId());
-        log.info("[Orchestrate] Meeting {} queued for async pipeline", meeting.getId());
+        log.info("[Orchestrate] Meeting {} queued for async pipeline (userId={})", meeting.getId(), userId);
         return new MeetingStartResponseDTO(meeting.getId(), meeting.getOrganizationName(), "RUNNING");
     }
 
@@ -262,6 +267,7 @@ public class MeetingOrchestrationService {
                 meeting.getMeetingObjective(),
                 meeting.getStakeholderRole(),
                 meeting.getStatus(),
+                meeting.getCreatedAt(),
                 runs.stream().map(AgentRunDTO::from).collect(Collectors.toList()),
                 traces.stream().map(AgentTraceDTO::from).collect(Collectors.toList()),
                 report != null ? FinalReportDTO.from(report, objectMapper) : null);

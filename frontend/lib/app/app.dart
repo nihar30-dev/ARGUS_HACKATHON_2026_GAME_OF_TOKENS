@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
 import '../services/meeting_repository.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_notifier.dart';
 import 'routes.dart';
 
 class MeetWiseApp extends StatelessWidget {
-  const MeetWiseApp({super.key});
+  final AuthService authService;
+
+  const MeetWiseApp({super.key, required this.authService});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeNotifier()),
-        Provider<MeetingRepository>(create: (_) => MeetingRepository()),
+        ChangeNotifierProvider<AuthService>.value(value: authService),
+        ProxyProvider<AuthService, MeetingRepository>(
+          update: (_, auth, prev) => prev ?? MeetingRepository(authService: auth),
+        ),
       ],
       child: Consumer<ThemeNotifier>(
         builder: (context, notifier, _) => MaterialApp(

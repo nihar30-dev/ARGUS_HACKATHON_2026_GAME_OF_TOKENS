@@ -1,17 +1,14 @@
 package com.argusoft.meetwise.dto;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.UUID;
 
-public record MeetingSessionResponseDTO(
+public record UserMeetingDTO(
         UUID meetingRequestId,
         String organizationName,
         String meetingObjective,
         String stakeholderRole,
         String status,
         LocalDateTime createdAt,
-        List<AgentRunDTO> agentRuns,
-        List<AgentTraceDTO> traces,
-        FinalReportDTO finalReport
+        Double overallConfidence
 ) {}
