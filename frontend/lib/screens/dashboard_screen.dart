@@ -121,67 +121,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? (isDark ? AppColors.tealLight : AppColors.textSecondary)
         : Colors.white.withValues(alpha: 0.80);
 
+    final auth = context.watch<AuthService>();
+
+    final navRow = SafeArea(
+      bottom: false,
+      child: SizedBox(
+        height: kToolbarHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Row(
+            children: [
+              SvgPicture.asset(logoAsset, height: 26, fit: BoxFit.contain),
+              const Spacer(),
+              IconButton(
+                tooltip: notifier.isDark ? 'Light mode' : 'Dark mode',
+                icon: Icon(
+                  notifier.isDark
+                      ? Icons.light_mode_outlined
+                      : Icons.dark_mode_outlined,
+                  color: iconColor, size: 20,
+                ),
+                onPressed: notifier.toggle,
+              ),
+              if (auth.isLoggedIn) ...[
+                _UserAvatarButton(
+                  user: auth.currentUser,
+                  iconColor: iconColor,
+                  onLogout: () async {
+                    final nav = Navigator.of(context);
+                    await auth.logout();
+                    nav.pushNamedAndRemoveUntil(Routes.login, (_) => false);
+                  },
+                ),
+              ],
+              const SizedBox(width: 2),
+              _NavCTAButton(
+                label: 'New Meeting',
+                onPressed: _goNew,
+                frosted: _navFrosted,
+                isDark: isDark,
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+
     return PreferredSize(
       preferredSize: const Size.fromHeight(kToolbarHeight),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: _navFrosted ? 18 : 0,
-            sigmaY: _navFrosted ? 18 : 0,
-          ),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOut,
-            decoration: BoxDecoration(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          color: _navFrosted
+              ? (isDark
+                  ? const Color(0xCC060C1D)
+                  : Colors.white.withValues(alpha: 0.88))
+              : Colors.transparent,
+          border: Border(
+            bottom: BorderSide(
               color: _navFrosted
-                  ? (isDark
-                      ? const Color(0xCC060C1D)
-                      : Colors.white.withValues(alpha: 0.88))
+                  ? (isDark ? AppColors.outlineDark : AppColors.outline)
                   : Colors.transparent,
-              border: Border(
-                bottom: BorderSide(
-                  color: _navFrosted
-                      ? (isDark ? AppColors.outlineDark : AppColors.outline)
-                      : Colors.transparent,
-                  width: 0.5,
-                ),
-              ),
-            ),
-            child: SafeArea(
-              bottom: false,
-              child: SizedBox(
-                height: kToolbarHeight,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                  child: Row(
-                    children: [
-                      SvgPicture.asset(logoAsset, height: 26, fit: BoxFit.contain),
-                      const Spacer(),
-                      IconButton(
-                        tooltip: notifier.isDark ? 'Light mode' : 'Dark mode',
-                        icon: Icon(
-                          notifier.isDark
-                              ? Icons.light_mode_outlined
-                              : Icons.dark_mode_outlined,
-                          color: iconColor, size: 20,
-                        ),
-                        onPressed: notifier.toggle,
-                      ),
-                      const SizedBox(width: 4),
-                      _NavCTAButton(
-                        label: 'New Meeting',
-                        onPressed: _goNew,
-                        frosted: _navFrosted,
-                        isDark: isDark,
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                  ),
-                ),
-              ),
+              width: 0.5,
             ),
           ),
         ),
+        // Only apply BackdropFilter when frosted to avoid zero-blur compositor
+        // artifacts (white tint) when transparent.
+        child: _navFrosted
+            ? ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: navRow,
+                ),
+              )
+            : navRow,
       ),
     );
   }
@@ -372,12 +388,16 @@ class _GradientButtonState extends State<_GradientButton> {
                 children: [
                   Icon(widget.icon, color: Colors.white, size: 17),
                   const SizedBox(width: 8),
-                  Text(widget.label,
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: widget.fontSize,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2)),
+                  Flexible(
+                    child: Text(widget.label,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: widget.fontSize,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.2)),
+                  ),
                 ],
               ),
             ),
@@ -473,6 +493,84 @@ class _NavCTAButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// User avatar button in nav — shows initials, taps to show logout menu.
+class _UserAvatarButton extends StatelessWidget {
+  final dynamic user; // UserModel | null
+  final Color iconColor;
+  final VoidCallback onLogout;
+  const _UserAvatarButton({
+    required this.user, required this.iconColor, required this.onLogout,
+  });
+
+  String get _initials {
+    final name = user?.name as String? ?? '';
+    final parts = name.trim().split(' ').where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts[0][0].toUpperCase();
+    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Account',
+      offset: const Offset(0, 40),
+      shape: RoundedRectangleBorder(
+        borderRadius: AppSpacing.roundedMd,
+        side: BorderSide(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? AppColors.outlineDark
+              : AppColors.outline,
+        ),
+      ),
+      color: Theme.of(context).brightness == Brightness.dark
+          ? AppColors.surfaceElevatedDark
+          : AppColors.surfaceCard,
+      elevation: 8,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Container(
+          width: 30, height: 30,
+          decoration: BoxDecoration(
+            gradient: AppColors.brandGradient,
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(_initials,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 11,
+                  fontWeight: FontWeight.w800)),
+        ),
+      ),
+      itemBuilder: (_) => [
+        PopupMenuItem<String>(
+          value: 'email',
+          enabled: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(user?.name ?? '', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              Text(user?.email ?? '', style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'logout',
+          onTap: onLogout,
+          child: const Row(
+            children: [
+              Icon(Icons.logout_rounded, size: 16, color: AppColors.danger),
+              SizedBox(width: 8),
+              Text('Sign out', style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -899,21 +997,22 @@ class _PipelineSectionState extends State<_PipelineSection>
 
               const SizedBox(height: AppSpacing.xxl),
 
-              // Legend row
-              Row(
+              // Legend row — Wrap prevents overflow on narrow mobile
+              Wrap(
+                spacing: AppSpacing.md,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   _LegendChip(
                     color: AppColors.brand,
                     label: 'Gemini AI',
                     icon: Icons.auto_awesome,
                   ),
-                  const SizedBox(width: AppSpacing.md),
                   _LegendChip(
                     color: AppColors.ruleBased,
                     label: 'Rule-based',
                     icon: Icons.rule_outlined,
                   ),
-                  const SizedBox(width: AppSpacing.md),
                   Text(
                     '· Each agent reads all prior outputs',
                     style: TextStyle(
@@ -1251,9 +1350,11 @@ class _FeaturedSessionCard extends StatelessWidget {
                     children: [
                       Text(
                         session.organizationName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w800,
-                          letterSpacing: -0.4, height: 1.1,
+                          fontSize: 18, fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4, height: 1.15,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -1281,7 +1382,9 @@ class _FeaturedSessionCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-            child: Row(
+            child: Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
               children: [
                 _StatChip(
                   value: '${session.agentRuns.length}',
@@ -1289,14 +1392,12 @@ class _FeaturedSessionCard extends StatelessWidget {
                   icon: Icons.smart_toy_outlined,
                   color: AppColors.brand,
                 ),
-                const SizedBox(width: AppSpacing.sm),
                 _StatChip(
                   value: '${session.traces.length}',
                   label: 'Traces',
                   icon: Icons.account_tree_outlined,
                   color: AppColors.accent,
                 ),
-                const SizedBox(width: AppSpacing.sm),
                 _StatChip(
                   value: '${(totalMs / 1000).toStringAsFixed(1)}s',
                   label: 'Runtime',
