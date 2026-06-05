@@ -4,7 +4,7 @@ import com.argusoft.meetwise.agent.Agent;
 import com.argusoft.meetwise.agent.AgentContext;
 import com.argusoft.meetwise.agent.AgentOutput;
 import com.argusoft.meetwise.service.FallbackDataService;
-import com.argusoft.meetwise.service.GeminiService;
+import com.argusoft.meetwise.service.GeminiClientService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,17 +17,14 @@ import java.util.List;
 @Slf4j
 public class FinalSynthesisAgent implements Agent {
 
-    private final GeminiService geminiService;
+    private final GeminiClientService geminiClient;
     private final FallbackDataService fallbackDataService;
 
     @Value("${app.demo-mode:false}")
     private boolean demoMode;
 
-    @Override
-    public String getName() { return "FinalSynthesisAgent"; }
-
-    @Override
-    public int getOrder() { return 6; }
+    @Override public String getName()  { return "FinalSynthesisAgent"; }
+    @Override public int    getOrder() { return 6; }
 
     @Override
     public AgentOutput execute(AgentContext context) {
@@ -37,12 +34,17 @@ public class FinalSynthesisAgent implements Agent {
         if (demoMode) {
             outputJson = fallbackDataService.loadFallback(getName());
         } else {
-            try {
-                String prompt = buildPrompt(context);
-                outputJson = geminiService.generate(prompt);
+            // FinalSynthesisAgent gets the most tokens — its output is the full meeting brief
+            String result = geminiClient.generateJson(
+                    systemInstruction(),
+                    userPrompt(context),
+                    1200);
+
+            if (result != null) {
+                outputJson = result;
                 usedGemini = true;
-            } catch (Exception e) {
-                log.warn("[{}] Gemini failed ({}), using fallback", getName(), e.getMessage());
+            } else {
+                log.warn("[{}] Gemini unavailable — using fallback", getName());
                 outputJson = fallbackDataService.loadFallback(getName());
             }
         }
@@ -59,41 +61,23 @@ public class FinalSynthesisAgent implements Agent {
                 .build();
     }
 
-    private String buildPrompt(AgentContext context) {
+    private String systemInstruction() {
         return """
-                You are a senior business consultant creating a final meeting preparation package.
-                You must incorporate the critic's validation feedback before finalising the output.
-
-                Organization Research:
-                %s
-
-                Stakeholder Persona:
-                %s
-
-                Engagement Strategy:
-                %s
-
-                Objection Predictions:
-                %s
-
-                Critic Validation (MUST incorporate improvements listed here):
-                %s
-
-                Return a JSON object (raw JSON, no markdown):
+                You are a senior business consultant producing the final meeting preparation package.
+                You MUST incorporate every improvement listed in the Critic Validation section.
+                Return ONLY a valid JSON object — no markdown, no explanation:
                 {
                   "agent": "FinalSynthesisAgent",
                   "executiveBrief": "2-3 sentence executive summary",
                   "conversationFlow": [
-                    {"phase": "Opening", "duration": "5 min", "approach": "description"},
-                    {"phase": "Discovery", "duration": "10 min", "approach": "description"},
-                    {"phase": "Demonstration", "duration": "15 min", "approach": "description"},
+                    {"phase": "Opening",            "duration": "5 min",  "approach": "description"},
+                    {"phase": "Discovery",          "duration": "10 min", "approach": "description"},
+                    {"phase": "Demonstration",      "duration": "15 min", "approach": "description"},
                     {"phase": "Objection Handling", "duration": "10 min", "approach": "description"},
-                    {"phase": "Close", "duration": "5 min", "approach": "description"}
+                    {"phase": "Close",              "duration": "5 min",  "approach": "description"}
                   ],
                   "topQuestions": ["question1", "question2", "question3"],
-                  "objectionResponses": [
-                    {"objection": "text", "response": "text"}
-                  ],
+                  "objectionResponses": [{"objection": "text", "response": "text"}],
                   "nextSteps": ["step1", "step2", "step3"],
                   "criticImprovementsApplied": ["improvement1", "improvement2"],
                   "overallConfidenceScore": 0.91,
@@ -101,13 +85,16 @@ public class FinalSynthesisAgent implements Agent {
                   "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent",
                                    "EngagementStrategyAgent", "ObjectionPredictionAgent", "CriticValidatorAgent"]
                 }
-                """.formatted(
-                context.getOutput("OrganizationResearchAgent"),
-                context.getOutput("StakeholderPersonaAgent"),
-                context.getOutput("EngagementStrategyAgent"),
-                context.getOutput("ObjectionPredictionAgent"),
-                context.getOutput("CriticValidatorAgent")
-        );
+                """;
+    }
+
+    private String userPrompt(AgentContext context) {
+        return "Organization Research:\n" + context.getOutput("OrganizationResearchAgent")
+                + "\n\nStakeholder Persona:\n" + context.getOutput("StakeholderPersonaAgent")
+                + "\n\nEngagement Strategy:\n" + context.getOutput("EngagementStrategyAgent")
+                + "\n\nObjection Predictions:\n" + context.getOutput("ObjectionPredictionAgent")
+                + "\n\nCritic Validation (incorporate all improvements):\n"
+                + context.getOutput("CriticValidatorAgent");
     }
 
     private double extractConfidence(String json) {
@@ -117,7 +104,7 @@ public class FinalSynthesisAgent implements Agent {
             int colon = json.indexOf(":", idx);
             int comma = json.indexOf(",", colon);
             int brace = json.indexOf("}", colon);
-            int end = Math.min(comma == -1 ? brace : comma, brace == -1 ? comma : brace);
+            int end = (comma == -1 || brace < comma) ? brace : comma;
             return Double.parseDouble(json.substring(colon + 1, end).trim());
         } catch (Exception e) {
             return 0.5;

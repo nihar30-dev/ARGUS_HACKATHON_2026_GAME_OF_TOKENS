@@ -29,8 +29,8 @@ server:
 gemini:
   api:
     key: ${GEMINI_API_KEY:}
-    url: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent
-  max-tokens: 1000
+    base-url: https://generativelanguage.googleapis.com/v1beta/models
+    model: ${GEMINI_MODEL:gemini-2.5-flash}
   temperature: 0.3
 
 app:
