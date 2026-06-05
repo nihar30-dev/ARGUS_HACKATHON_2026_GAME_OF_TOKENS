@@ -39,6 +39,10 @@ public class ClaudeService {
     }
 
     public String generate(String prompt) {
+        return generate(prompt, maxTokens);
+    }
+
+    public String generate(String prompt, int tokenLimit) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new MeetwiseException("CLAUDE_API_KEY is not configured");
         }
@@ -50,7 +54,7 @@ public class ClaudeService {
 
         Map<String, Object> requestBody = Map.of(
                 "model", model,
-                "max_tokens", maxTokens,
+                "max_tokens", tokenLimit,
                 "temperature", temperature,
                 "messages", List.of(Map.of("role", "user", "content", prompt))
         );

@@ -8,4 +8,5 @@ import java.util.UUID;
 
 public interface FinalReportRepository extends JpaRepository<FinalReport, UUID> {
     Optional<FinalReport> findByMeetingRequestId(UUID meetingRequestId);
+    void deleteByMeetingRequestId(UUID meetingRequestId);
 }

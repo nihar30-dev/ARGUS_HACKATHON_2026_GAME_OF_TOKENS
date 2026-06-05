@@ -8,4 +8,5 @@ import java.util.UUID;
 
 public interface AgentTraceRepository extends JpaRepository<AgentTrace, UUID> {
     List<AgentTrace> findByMeetingRequestIdOrderByCreatedAtAsc(UUID meetingRequestId);
+    void deleteByMeetingRequestId(UUID meetingRequestId);
 }

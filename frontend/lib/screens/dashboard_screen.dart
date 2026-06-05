@@ -108,13 +108,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() => _loadingDemo = true);
     try {
       final repo = Provider.of<MeetingRepository>(context, listen: false);
-      final session = await repo.runDemo();
-      if (!mounted) return;
-      
-      // Navigate to trace view to showcase agent pipeline execution
-      Navigator.pushNamed(context, Routes.trace, arguments: session).then((_) {
-        if (mounted) setState(() {});
-      });
+      if (MeetingRepository.useMockData) {
+        final session = await repo.runDemo();
+        if (!mounted) return;
+        Navigator.pushNamed(context, Routes.trace, arguments: session)
+            .then((_) { if (mounted) setState(() {}); });
+      } else {
+        final start = await repo.startDemo();
+        if (!mounted) return;
+        Navigator.pushNamed(context, Routes.live, arguments: start)
+            .then((_) { if (mounted) setState(() {}); });
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

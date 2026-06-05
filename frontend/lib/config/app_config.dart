@@ -45,7 +45,7 @@ abstract class AppConfig {
   /// Web note: the backend must have CORS configured to allow requests from
   /// the Flutter web origin (e.g. http://localhost:8082 in local dev).
   // ↓ change this URL to point at your backend ↓
-  static const String backendBaseUrl = 'http://192.1.170.32:8082/api';
+  static const String backendBaseUrl = 'http://192.1.170.10:8081/api';
 
   // ── Request timeout ───────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ abstract class AppConfig {
   /// 60 s is intentionally generous; reduce if you hit real performance SLAs.
   ///
   /// Only used when [useMockData] = false.
-  static const Duration apiTimeout = Duration(seconds: 60);
+  static const Duration apiTimeout = Duration(seconds: 360);
 
   // ── Demo delay ────────────────────────────────────────────────────────────
 
@@ -63,4 +63,18 @@ abstract class AppConfig {
   ///
   /// Set to [Duration.zero] to skip the delay during automated tests.
   static const Duration mockDelay = Duration(seconds: 2);
+
+  // ── WebSocket URL ─────────────────────────────────────────────────────────
+
+  /// Derived from [backendBaseUrl] — strips /api suffix and switches http→ws.
+  /// e.g. 'http://192.1.170.10:8081/api'  →  'ws://192.1.170.10:8081/ws'
+  static String get wsUrl {
+    final base = backendBaseUrl.endsWith('/api')
+        ? backendBaseUrl.substring(0, backendBaseUrl.length - 4)
+        : backendBaseUrl;
+    final wsBase = base
+        .replaceFirst('https://', 'wss://')
+        .replaceFirst('http://', 'ws://');
+    return '$wsBase/ws';
+  }
 }

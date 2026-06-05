@@ -116,7 +116,8 @@ class SessionResponse {
         organizationName: j['organizationName'] as String? ?? '',
         meetingObjective: j['meetingObjective'] as String?,
         stakeholderRole: j['stakeholderRole'] as String?,
-        status: j['status'] as String? ?? 'UNKNOWN',
+        // PIPELINE_COMPLETE WS message uses pipelineStatus; REST uses status
+        status: j['status'] as String? ?? j['pipelineStatus'] as String? ?? 'UNKNOWN',
         agentRuns: (j['agentRuns'] as List<dynamic>? ?? [])
             .map((e) => AgentRun.fromJson(e as Map<String, dynamic>))
             .toList(),

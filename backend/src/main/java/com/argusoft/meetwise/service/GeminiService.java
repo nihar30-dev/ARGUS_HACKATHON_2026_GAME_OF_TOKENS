@@ -33,6 +33,10 @@ public class GeminiService {
     private double temperature;
 
     public String generate(String prompt) {
+        return generate(prompt, maxTokens);
+    }
+
+    public String generate(String prompt, int tokenLimit) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new MeetwiseException("GEMINI_API_KEY is not configured");
         }
@@ -46,7 +50,7 @@ public class GeminiService {
                 "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt)))),
                 "generationConfig", Map.of(
                         "temperature", temperature,
-                        "maxOutputTokens", maxTokens,
+                        "maxOutputTokens", tokenLimit,
                         "responseMimeType", "application/json"
                 )
         );

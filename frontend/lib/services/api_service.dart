@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
+import '../models/pipeline_message.dart';
 import '../models/session_response.dart';
 
 // Timeout and base URL are configured in lib/config/app_config.dart.
@@ -25,6 +26,42 @@ class ApiService {
       : baseUrl = baseUrl ?? AppConfig.backendBaseUrl;
 
   // ── Endpoints ──────────────────────────────────────────────────────────────
+
+  /// POST /api/meetings — starts async pipeline; returns meetingRequestId immediately.
+  Future<MeetingStartResponse> startMeeting({
+    required String organizationName,
+    required String meetingObjective,
+    required String offeringDescription,
+    required String stakeholderRole,
+  }) =>
+      _execute('POST /meetings (start)', () async {
+        final res = await http
+            .post(
+              Uri.parse('$baseUrl/meetings'),
+              headers: _jsonHeaders,
+              body: jsonEncode({
+                'organizationName': organizationName,
+                'meetingObjective': meetingObjective,
+                'offeringDescription': offeringDescription,
+                'stakeholderRole': stakeholderRole,
+              }),
+            )
+            .timeout(AppConfig.apiTimeout);
+        _assertSuccess(res, 'POST /meetings');
+        return MeetingStartResponse.fromJson(
+            jsonDecode(res.body) as Map<String, dynamic>);
+      });
+
+  /// POST /api/meetings/demo — async demo pipeline; returns meetingRequestId immediately.
+  Future<MeetingStartResponse> startDemo() =>
+      _execute('POST /meetings/demo (start)', () async {
+        final res = await http
+            .post(Uri.parse('$baseUrl/meetings/demo'), headers: _jsonHeaders)
+            .timeout(AppConfig.apiTimeout);
+        _assertSuccess(res, 'POST /meetings/demo');
+        return MeetingStartResponse.fromJson(
+            jsonDecode(res.body) as Map<String, dynamic>);
+      });
 
   /// POST /api/meetings — runs the full 6-agent pipeline synchronously.
   /// Keeps named parameters for backward compatibility with [MeetingInputScreen].

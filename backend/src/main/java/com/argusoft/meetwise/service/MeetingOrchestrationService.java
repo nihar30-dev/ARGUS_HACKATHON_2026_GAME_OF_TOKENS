@@ -11,6 +11,10 @@ import com.argusoft.meetwise.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,13 +32,17 @@ public class MeetingOrchestrationService {
     private final AgentTraceRepository        agentTraceRepository;
     private final FinalReportRepository       finalReportRepository;
     private final ObjectMapper                objectMapper;
+    private final SimpMessagingTemplate       messagingTemplate;
+
+    // Self-reference so @Async works via Spring proxy (field injection, not constructor)
+    @Autowired @Lazy
+    private MeetingOrchestrationService self;
 
     // -----------------------------------------------------------------------
-    // Public API
+    // Public API — returns immediately; pipeline runs in background
     // -----------------------------------------------------------------------
 
-    @Transactional
-    public MeetingSessionResponseDTO orchestrate(MeetingRequestDTO dto) {
+    public MeetingStartResponseDTO orchestrate(MeetingRequestDTO dto) {
         MeetingRequest meeting = meetingRequestRepository.save(MeetingRequest.builder()
                 .organizationName(dto.organizationName())
                 .stakeholderRole(dto.stakeholderRole())
@@ -43,55 +51,26 @@ public class MeetingOrchestrationService {
                 .status("RUNNING")
                 .build());
 
-        UUID         meetingId = meeting.getId();
-        AgentContext context   = new AgentContext(meeting);
-        List<AgentRun> runs    = new ArrayList<>();
+        self.runPipelineAsync(meeting.getId());
+        log.info("[Orchestrate] Meeting {} queued for async pipeline", meeting.getId());
+        return new MeetingStartResponseDTO(meeting.getId(), meeting.getOrganizationName(), "RUNNING");
+    }
 
-        List<Agent> pipeline = agents.stream()
-                .sorted(Comparator.comparingInt(Agent::getOrder))
-                .collect(Collectors.toList());
+    @Transactional
+    public MeetingStartResponseDTO runById(UUID meetingId) {
+        MeetingRequest meeting = meetingRequestRepository.findById(meetingId)
+                .orElseThrow(() -> new MeetwiseException("Meeting not found: " + meetingId));
 
-        try {
-            // ── Execute each agent, persist its run immediately ───────────────
-            for (Agent agent : pipeline) {
-                log.info("[Meeting {}] Running {} (order {})",
-                        meetingId, agent.getName(), agent.getOrder());
-                long start = System.currentTimeMillis();
+        agentRunRepository.deleteByMeetingRequestId(meetingId);
+        agentTraceRepository.deleteByMeetingRequestId(meetingId);
+        finalReportRepository.deleteByMeetingRequestId(meetingId);
 
-                AgentResult result     = agent.execute(context);
-                long        execMs     = System.currentTimeMillis() - start;
+        meeting.setStatus("RUNNING");
+        meetingRequestRepository.save(meeting);
 
-                // putResult already called inside each agent; keep raw JSON slot in sync
-                context.putOutput(agent.getName(), result.getOutputJson());
-
-                runs.add(agentRunRepository.save(toAgentRun(meetingId, result, execMs)));
-
-                log.info("[Meeting {}] {} done in {}ms  type={} status={} confidence={}",
-                        meetingId, agent.getName(), execMs,
-                        result.getAgentType(), result.getStatus(), result.getConfidenceScore());
-            }
-
-            // ── Persist all trace edges accumulated by agents via addTrace() ──
-            // Each agent calls addTrace(context, source, type, description).
-            // context.getTraceMessages() collects them all with per-edge type and text.
-            // We persist them here (after the pipeline) so every agent's messages are present.
-            List<AgentTrace> traces = persistAllTraces(meetingId, context);
-
-            meeting.setStatus("COMPLETED");
-            meetingRequestRepository.save(meeting);
-
-            FinalReport report = saveFinalReport(meetingId, context.getOutput("FinalSynthesisAgent"));
-            log.info("[Meeting {}] COMPLETED — {} agent runs, {} trace edges",
-                    meetingId, runs.size(), traces.size());
-
-            return buildResponse(meeting, runs, traces, report);
-
-        } catch (Exception e) {
-            log.error("[Meeting {}] Orchestration failed: {}", meetingId, e.getMessage(), e);
-            meeting.setStatus("FAILED");
-            meetingRequestRepository.save(meeting);
-            throw new MeetwiseException("Orchestration failed: " + e.getMessage(), e);
-        }
+        self.runPipelineAsync(meetingId);
+        log.info("[RunById] Meeting {} re-queued for async pipeline", meetingId);
+        return new MeetingStartResponseDTO(meetingId, meeting.getOrganizationName(), "RUNNING");
     }
 
     public MeetingSessionResponseDTO getSession(UUID meetingId) {
@@ -106,16 +85,101 @@ public class MeetingOrchestrationService {
     }
 
     // -----------------------------------------------------------------------
-    // Trace persistence — uses rich AgentTraceMessage objects from context
+    // Async pipeline — runs in background thread, publishes WS events
     // -----------------------------------------------------------------------
 
-    /**
-     * Every agent calls addTrace(context, source, type, description) during execution.
-     * Those messages accumulate in context.getTraceMessages().
-     * This method persists them as AgentTrace rows after the pipeline completes,
-     * preserving influence_type (INFLUENCE / VALIDATION / REFINEMENT / CONFLICT_RESOLUTION)
-     * and the per-edge description text agents wrote.
-     */
+    @Async("pipelineExecutor")
+    public void runPipelineAsync(UUID meetingId) {
+        String topic = "/topic/meetings/" + meetingId + "/progress";
+
+        MeetingRequest meeting = meetingRequestRepository.findById(meetingId)
+                .orElseThrow(() -> new MeetwiseException("Meeting not found: " + meetingId));
+
+        AgentContext   context  = new AgentContext(meeting);
+        List<AgentRun> runs     = new ArrayList<>();
+
+        List<Agent> pipeline = agents.stream()
+                .sorted(Comparator.comparingInt(Agent::getOrder))
+                .collect(Collectors.toList());
+
+        try {
+            for (Agent agent : pipeline) {
+                // Notify client this agent is starting
+                messagingTemplate.convertAndSend(topic, AgentProgressDTO.builder()
+                        .type("AGENT_START")
+                        .meetingRequestId(meetingId.toString())
+                        .agentName(agent.getName())
+                        .executionOrder(agent.getOrder())
+                        .pipelineStatus("RUNNING")
+                        .build());
+
+                log.info("[Pipeline {}] Running {} (order {})", meetingId, agent.getName(), agent.getOrder());
+                long start  = System.currentTimeMillis();
+                AgentResult result  = agent.execute(context);
+                long execMs = System.currentTimeMillis() - start;
+
+                context.putOutput(agent.getName(), result.getOutputJson());
+                runs.add(agentRunRepository.save(toAgentRun(meetingId, result, execMs)));
+
+                // Notify client this agent completed
+                messagingTemplate.convertAndSend(topic, AgentProgressDTO.builder()
+                        .type("AGENT_COMPLETE")
+                        .meetingRequestId(meetingId.toString())
+                        .agentName(result.getAgentName())
+                        .executionOrder(getOrder(result.getAgentName()))
+                        .status(result.getStatus() != null ? result.getStatus().name() : "SUCCESS")
+                        .confidenceScore(result.getConfidenceScore())
+                        .usedGemini(result.isUsedGemini())
+                        .executionMs(execMs)
+                        .pipelineStatus("RUNNING")
+                        .build());
+
+                log.info("[Pipeline {}] {} done in {}ms  confidence={}", meetingId,
+                        agent.getName(), execMs, result.getConfidenceScore());
+            }
+
+            List<AgentTrace> traces = persistAllTraces(meetingId, context);
+            meeting.setStatus("COMPLETED");
+            meetingRequestRepository.save(meeting);
+            FinalReport report = saveFinalReport(meetingId, context.getOutput("FinalSynthesisAgent"));
+
+            log.info("[Pipeline {}] COMPLETED — {} runs, {} traces", meetingId, runs.size(), traces.size());
+
+            MeetingSessionResponseDTO full = buildResponse(meeting, runs, traces, report);
+
+            // Send full session so Flutter can build SessionResponse without a second REST call
+            messagingTemplate.convertAndSend(topic, AgentProgressDTO.builder()
+                    .type("PIPELINE_COMPLETE")
+                    .meetingRequestId(meetingId.toString())
+                    .organizationName(meeting.getOrganizationName())
+                    .meetingObjective(meeting.getMeetingObjective())
+                    .stakeholderRole(meeting.getStakeholderRole())
+                    .pipelineStatus("COMPLETED")
+                    .agentRuns(full.agentRuns())
+                    .traces(full.traces())
+                    .finalReport(full.finalReport())
+                    .build());
+
+        } catch (Exception e) {
+            log.error("[Pipeline {}] Failed: {}", meetingId, e.getMessage(), e);
+            try {
+                meeting.setStatus("FAILED");
+                meetingRequestRepository.save(meeting);
+            } catch (Exception ignored) {}
+
+            messagingTemplate.convertAndSend(topic, AgentProgressDTO.builder()
+                    .type("PIPELINE_FAILED")
+                    .meetingRequestId(meetingId.toString())
+                    .pipelineStatus("FAILED")
+                    .errorMessage(e.getMessage())
+                    .build());
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Trace persistence
+    // -----------------------------------------------------------------------
+
     private List<AgentTrace> persistAllTraces(UUID meetingId, AgentContext context) {
         List<AgentTrace> saved = new ArrayList<>();
         for (AgentTraceMessage msg : context.getTraceMessages()) {
@@ -195,6 +259,8 @@ public class MeetingOrchestrationService {
         return new MeetingSessionResponseDTO(
                 meeting.getId(),
                 meeting.getOrganizationName(),
+                meeting.getMeetingObjective(),
+                meeting.getStakeholderRole(),
                 meeting.getStatus(),
                 runs.stream().map(AgentRunDTO::from).collect(Collectors.toList()),
                 traces.stream().map(AgentTraceDTO::from).collect(Collectors.toList()),

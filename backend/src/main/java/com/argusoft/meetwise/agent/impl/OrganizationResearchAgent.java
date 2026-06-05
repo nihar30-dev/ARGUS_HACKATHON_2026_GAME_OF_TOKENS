@@ -73,26 +73,36 @@ public class OrganizationResearchAgent extends BaseAgent {
 
     private String buildPrompt(String orgName, String objective, String offering) {
         return """
-                You are an expert business intelligence analyst.
-                Analyze the following organization for a meeting preparation context.
-                This could be any industry — adapt your analysis to the actual sector.
+               You are a business analyst preparing meeting intelligence.
+
+                Analyze the organization, meeting objective, and offering.
+                Identify likely priorities, challenges, and partnership opportunities.
+
+                Requirements:
+                - Be specific to the organization and industry.
+                - Keep responses concise.
+                - Avoid generic business advice.
+                - Use short phrases instead of paragraphs where possible.
+                - If information is uncertain, add it to evidence_gaps.
+                - Return JSON only.
 
                 Organization: %s
                 Meeting Objective: %s
                 Our Offering: %s
 
                 Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
+
                 {
-                  "agent": "OrganizationResearchAgent",
-                  "organization_summary": "2-3 sentence summary of this specific organization",
-                  "industry_context": "key industry dynamics that affect this meeting",
-                  "likely_priorities": ["priority1 specific to this org", "priority2", "priority3"],
-                  "possible_pain_points": ["pain point 1 specific to this org/industry", "pain2", "pain3"],
-                  "solution_fit": "how the offering maps to this organization's specific context and needs",
-                  "partnership_fit": ["opportunity1", "opportunity2"],
-                  "evidence_gaps": ["gap1"],
-                  "confidence_score": 0.85,
-                  "influencedBy": []
+                "agent": "OrganizationResearchAgent",
+                "organization_summary": "2-3 sentence summary of this specific organization",
+                "industry_context": "key industry dynamics that affect this meeting",
+                "likely_priorities": ["priority1 specific to this org", "priority2", "priority3"],
+                "possible_pain_points": ["pain point 1 specific to this org/industry", "pain2", "pain3"],
+                "solution_fit": "how the offering maps to this organization's specific context and needs",
+                "partnership_fit": ["opportunity1", "opportunity2"],
+                "evidence_gaps": ["gap1"],
+                "confidence_score": 0.85,
+                "influencedBy": []
                 }
                 """.formatted(orgName, objective, offering);
     }

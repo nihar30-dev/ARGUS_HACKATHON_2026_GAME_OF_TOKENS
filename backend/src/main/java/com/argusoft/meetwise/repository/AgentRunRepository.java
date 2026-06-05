@@ -8,4 +8,5 @@ import java.util.UUID;
 
 public interface AgentRunRepository extends JpaRepository<AgentRun, UUID> {
     List<AgentRun> findByMeetingRequestIdOrderByExecutionOrderAsc(UUID meetingRequestId);
+    void deleteByMeetingRequestId(UUID meetingRequestId);
 }

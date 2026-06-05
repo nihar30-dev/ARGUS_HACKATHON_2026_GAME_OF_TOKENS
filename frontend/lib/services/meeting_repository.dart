@@ -3,6 +3,7 @@
 export 'api_service.dart' show ApiException;
 
 import '../config/app_config.dart';
+import '../models/pipeline_message.dart';
 import '../models/session_response.dart';
 import 'api_service.dart';
 import 'mock_meeting_service.dart';
@@ -37,6 +38,53 @@ class MeetingRepository {
   List<SessionResponse> get recentMeetings => List.unmodifiable(_recentMeetings);
 
   // ── Methods ────────────────────────────────────────────────────────────────
+
+  /// Adds or updates a session in the recent meetings list.
+  /// Called by PipelineLiveScreen when PIPELINE_COMPLETE arrives.
+  void addToRecent(SessionResponse session) {
+    final idx = _recentMeetings.indexWhere((s) => s.sessionId == session.sessionId);
+    if (idx != -1) {
+      _recentMeetings[idx] = session;
+    } else {
+      _recentMeetings.insert(0, session);
+    }
+  }
+
+  /// POST /api/meetings — starts async pipeline, returns meetingRequestId immediately.
+  /// Navigate to Routes.live with the returned [MeetingStartResponse].
+  Future<MeetingStartResponse> startMeeting({
+    required String organizationName,
+    required String meetingObjective,
+    required String offeringDescription,
+    required String stakeholderRole,
+  }) async {
+    if (useMockData) {
+      // Mock mode: return a fake start response; PipelineLiveScreen uses timer simulation
+      return MeetingStartResponse(
+        meetingRequestId: 'mock-${DateTime.now().millisecondsSinceEpoch}',
+        organizationName: organizationName,
+        status: 'RUNNING',
+      );
+    }
+    return _api.startMeeting(
+      organizationName: organizationName,
+      meetingObjective: meetingObjective,
+      offeringDescription: offeringDescription,
+      stakeholderRole: stakeholderRole,
+    );
+  }
+
+  /// POST /api/meetings/demo — async Apollo Hospitals demo.
+  Future<MeetingStartResponse> startDemo() async {
+    if (useMockData) {
+      return const MeetingStartResponse(
+        meetingRequestId: 'mock-demo',
+        organizationName: 'Apollo Hospitals',
+        status: 'RUNNING',
+      );
+    }
+    return _api.startDemo();
+  }
 
   /// POST /api/meetings — runs the full 6-agent pipeline.
   Future<SessionResponse> createMeeting({

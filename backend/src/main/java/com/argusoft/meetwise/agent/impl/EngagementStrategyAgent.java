@@ -83,30 +83,43 @@ public class EngagementStrategyAgent extends BaseAgent {
 
     private String buildPrompt(String research, String persona, String offering) {
         return """
-                You are a senior sales strategist. Create a targeted meeting engagement strategy.
+               You are a senior sales strategist.
 
-                Organization Research:
-                %s
+                    Create a practical meeting strategy using the organization research, stakeholder persona, and offering.
 
-                Stakeholder Persona:
-                %s
+                    Requirements:
+                    - Be specific to the organization and stakeholder.
+                    - Focus on business value and meeting outcomes.
+                    - Keep responses concise and actionable.
+                    - Use short phrases, not long explanations.
+                    - Generate 2-3 partnership angles.
+                    - Generate 3 success criteria.
+                    - Generate 3 key messages.
+                    - Return JSON only.
 
-                Our Offering:
-                %s
+                    Organization Research:
+                    %s
 
-                Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
-                {
-                  "agent": "EngagementStrategyAgent",
-                  "meeting_goal": "specific goal for this meeting",
-                  "primary_positioning": "how to position the offering for this stakeholder",
-                  "value_proposition": "tailored 1-2 sentence value proposition with specific differentiators",
-                  "partnership_angles": ["angle1", "angle2"],
-                  "success_criteria": ["criterion1", "criterion2", "criterion3"],
-                  "recommended_next_step": "the single most important next action to propose",
-                  "key_messages": ["message1", "message2", "message3"],
-                  "confidence_score": 0.88,
-                  "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent"]
-                }
+                    Stakeholder Persona:
+                    %s
+
+                    Our Offering:
+                    %s
+
+                    Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
+
+                    {
+                    "agent": "EngagementStrategyAgent",
+                    "meeting_goal": "specific goal for this meeting",
+                    "primary_positioning": "how to position the offering for this stakeholder",
+                    "value_proposition": "tailored 1-2 sentence value proposition with specific differentiators",
+                    "partnership_angles": ["angle1", "angle2"],
+                    "success_criteria": ["criterion1", "criterion2", "criterion3"],
+                    "recommended_next_step": "the single most important next action to propose",
+                    "key_messages": ["message1", "message2", "message3"],
+                    "confidence_score": 0.88,
+                    "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent"]
+                    }
                 """.formatted(research, persona, offering);
     }
 }

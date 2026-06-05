@@ -18,16 +18,25 @@ public class MeetingController {
 
     private final MeetingOrchestrationService orchestrationService;
 
+    /** Start a new pipeline — returns immediately with meetingRequestId. */
     @PostMapping
-    public ResponseEntity<MeetingSessionResponseDTO> createMeeting(
+    public ResponseEntity<MeetingStartResponseDTO> createMeeting(
             @Valid @RequestBody MeetingRequestDTO requestDTO) {
         log.info("New meeting request for: {}", requestDTO.organizationName());
         return ResponseEntity.ok(orchestrationService.orchestrate(requestDTO));
     }
 
+    /** Re-run pipeline on an existing meeting request. */
+    @PostMapping("/{meetingId}/run")
+    public ResponseEntity<MeetingStartResponseDTO> runExisting(@PathVariable UUID meetingId) {
+        log.info("Re-run pipeline for meeting: {}", meetingId);
+        return ResponseEntity.ok(orchestrationService.runById(meetingId));
+    }
+
+    /** Apollo Hospitals demo — starts async, returns immediately. */
     @PostMapping("/demo")
-    public ResponseEntity<MeetingSessionResponseDTO> runDemo() {
-        log.info("Demo mode triggered");
+    public ResponseEntity<MeetingStartResponseDTO> runDemo() {
+        log.info("Demo pipeline triggered");
         MeetingRequestDTO demo = new MeetingRequestDTO(
                 "Apollo Hospitals",
                 "Discuss MEDplat digital health platform partnership",
@@ -37,18 +46,23 @@ public class MeetingController {
         return ResponseEntity.ok(orchestrationService.orchestrate(demo));
     }
 
+    /** Full session with agent runs, traces, and report — available after pipeline completes. */
     @GetMapping("/{meetingId}")
     public ResponseEntity<MeetingSessionResponseDTO> getSession(@PathVariable UUID meetingId) {
         return ResponseEntity.ok(orchestrationService.getSession(meetingId));
     }
 
+    /** Agent influence trace edges only. */
     @GetMapping("/{meetingId}/traces")
     public ResponseEntity<?> getTraces(@PathVariable UUID meetingId) {
         return ResponseEntity.ok(orchestrationService.getSession(meetingId).traces());
     }
 
+    /** Final synthesis report — 404 if not ready yet. */
     @GetMapping("/{meetingId}/report")
     public ResponseEntity<?> getReport(@PathVariable UUID meetingId) {
-        return ResponseEntity.ok(orchestrationService.getSession(meetingId).finalReport());
+        var report = orchestrationService.getSession(meetingId).finalReport();
+        if (report == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(report);
     }
 }

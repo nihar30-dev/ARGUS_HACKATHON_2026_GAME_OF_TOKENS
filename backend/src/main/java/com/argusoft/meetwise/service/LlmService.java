@@ -22,11 +22,14 @@ public class LlmService {
     private String provider;
 
     public String generate(String prompt) {
-        log.debug("LLM provider: {}", provider);
-        if ("claude".equalsIgnoreCase(provider)) {
-            return claudeService.generate(prompt);
-        }
+        if ("claude".equalsIgnoreCase(provider)) return claudeService.generate(prompt);
         return geminiService.generate(prompt);
+    }
+
+    public String generate(String prompt, int maxTokens) {
+        log.info("[LLM] provider={} maxTokens={}", provider, maxTokens);
+        if ("claude".equalsIgnoreCase(provider)) return claudeService.generate(prompt, maxTokens);
+        return geminiService.generate(prompt, maxTokens);
     }
 
     public String getActiveProvider() {

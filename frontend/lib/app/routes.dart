@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
+import '../models/pipeline_message.dart';
 import '../models/session_response.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/meeting_form_screen.dart';
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/agent_trace_screen.dart';
 import '../screens/final_report_screen.dart';
+import '../screens/pipeline_live_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/error_view.dart';
 
 class Routes {
-  static const String home = '/';
+  static const String home       = '/';
   static const String newMeeting = '/new';
-  static const String dashboard = '/dashboard';
-  static const String trace = '/trace';
-  static const String report = '/report';
+  static const String live       = '/live';
+  static const String dashboard  = '/dashboard';
+  static const String trace      = '/trace';
+  static const String report     = '/report';
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -22,6 +25,11 @@ class Routes {
         return MaterialPageRoute(builder: (_) => const DashboardScreen());
       case newMeeting:
         return MaterialPageRoute(builder: (_) => const MeetingFormScreen());
+      case live:
+        final args = settings.arguments;
+        if (args is! MeetingStartResponse) return _badArgRoute(settings.name);
+        return MaterialPageRoute(
+            builder: (_) => PipelineLiveScreen(start: args));
       case dashboard:
         final session = _sessionArg(settings);
         if (session == null) return _badArgRoute(settings.name);

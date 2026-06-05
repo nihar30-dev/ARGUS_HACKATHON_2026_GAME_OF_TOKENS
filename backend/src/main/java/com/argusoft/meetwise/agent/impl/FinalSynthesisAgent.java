@@ -102,35 +102,34 @@ public class FinalSynthesisAgent extends BaseAgent {
                                      "revised_key_messages", "changes_made");
 
         return """
-                You are a senior business consultant. Synthesise a meeting preparation package.
-                Use ONLY the data below — do not invent content.
+                You are a senior business consultant. Synthesise a meeting brief from the data below.
+                Use ONLY the provided data. Resolve any conflicts using REFINED STRATEGY.
+                Be concise — max 20 words per string value.
 
                 ORGANIZATION: %s
                 STAKEHOLDER: %s
                 STRATEGY: %s
                 OBJECTIONS: %s
                 CRITIC FLAGS: %s
-                REFINED STRATEGY (authoritative): %s
+                REFINED STRATEGY: %s
 
                 Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
                 {
                   "agent": "FinalSynthesisAgent",
-                  "executive_brief": "2-3 sentence summary using the refined positioning",
-                  "meeting_objective": "specific goal for this meeting",
-                  "recommended_positioning": "from refined strategy",
+                  "executive_brief": "2-sentence summary",
+                  "meeting_objective": "one sentence goal",
+                  "recommended_positioning": "one sentence from refined strategy",
                   "conversation_flow": [
-                    {"phase": "Opening",           "duration": "5 min",  "approach": "specific approach"},
-                    {"phase": "Discovery",          "duration": "10 min", "approach": "specific approach"},
-                    {"phase": "Demonstration",      "duration": "15 min", "approach": "specific approach"},
-                    {"phase": "Objection Handling", "duration": "10 min", "approach": "specific approach"},
-                    {"phase": "Close",              "duration": "5 min",  "approach": "specific approach"}
+                    {"phase": "Opening",    "approach": "brief approach"},
+                    {"phase": "Discovery",  "approach": "brief approach"},
+                    {"phase": "Close",      "approach": "brief approach"}
                   ],
                   "questions_to_ask": ["q1", "q2", "q3"],
                   "objections_and_responses": [
                     {"objection": "text", "response": "text", "risk_level": 0.9}
                   ],
-                  "next_steps": ["step1", "step2"],
-                  "refinements_applied": ["change1 from critic/objection feedback"],
+                  "next_steps": ["step1", "step2", "step3"],
+                  "refinements_applied": ["change1", "change2"],
                   "readiness_score": 0.91,
                   "confidence_score": 0.91,
                   "overallConfidenceScore": 0.91,

@@ -80,9 +80,18 @@ public class ObjectionPredictionAgent extends BaseAgent {
 
     private String buildPrompt(String research, String persona, String strategy) {
         return """
-                You are a skeptical executive and devil's advocate. Predict objections for this sales meeting.
-                Behave like a skeptical executive who does NOT agree with the strategy automatically.
-                Minimum 3 objections. Challenge assumptions. Generate evidence requests.
+               You are a skeptical executive reviewing this meeting strategy.
+
+                Do not agree automatically.
+                Identify realistic risks, missing evidence, weak assumptions, budget concerns, adoption challenges, integration risks, and stakeholder objections.
+
+                Requirements:
+                - Generate 3-5 unique objections.
+                - Focus on high-impact executive concerns.
+                - Keep responses concise.
+                - Avoid repetition.
+                - Use organization, persona, and strategy context.
+                - Return JSON only.
 
                 Organization Research:
                 %s
@@ -94,21 +103,22 @@ public class ObjectionPredictionAgent extends BaseAgent {
                 %s
 
                 Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
+
                 {
-                  "agent": "ObjectionPredictionAgent",
-                  "objections": [
+                "agent": "ObjectionPredictionAgent",
+                "objections": [
                     {
-                      "objection": "specific objection text",
-                      "risk_level": 0.9,
-                      "why_it_may_arise": "root cause explanation",
-                      "recommended_response": "how to counter this objection",
-                      "evidence_needed": "what proof would resolve this"
+                    "objection": "specific objection text",
+                    "risk_level": 0.9,
+                    "why_it_may_arise": "root cause explanation",
+                    "recommended_response": "how to counter this objection",
+                    "evidence_needed": "what proof would resolve this"
                     }
-                  ],
-                  "strategy_adjustments": ["adjustment1", "adjustment2"],
-                  "red_flags": ["flag1", "flag2"],
-                  "confidence_score": 0.82,
-                  "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent", "EngagementStrategyAgent"]
+                ],
+                "strategy_adjustments": ["adjustment1", "adjustment2"],
+                "red_flags": ["flag1", "flag2"],
+                "confidence_score": 0.82,
+                "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent", "EngagementStrategyAgent"]
                 }
                 """.formatted(research, persona, strategy);
     }

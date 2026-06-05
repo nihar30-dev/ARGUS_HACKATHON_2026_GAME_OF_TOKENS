@@ -156,30 +156,46 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
     setState(() => _error = null);
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _loading = true;
-      _loadingStep = 0;
-    });
-    _startLoadingAnimation();
+    setState(() { _loading = true; _loadingStep = 0; });
 
     final repo = context.read<MeetingRepository>();
-    try {
-      final session = await repo.createMeeting(
-        organizationName: _orgCtrl.text.trim(),
-        meetingObjective: _objCtrl.text.trim(),
-        offeringDescription: _offerCtrl.text.trim(),
-        stakeholderRole: _roleCtrl.text.trim(),
-      );
-      if (!mounted) return;
-      
-      // Navigate to the Trace view to show agent flow
-      Navigator.pushReplacementNamed(context, Routes.trace, arguments: session);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = _friendlyError(e));
-    } finally {
-      _stopLoadingAnimation();
-      if (mounted) setState(() => _loading = false);
+
+    if (MeetingRepository.useMockData) {
+      // Mock mode: keep old blocking + animated overlay behaviour
+      _startLoadingAnimation();
+      try {
+        final session = await repo.createMeeting(
+          organizationName: _orgCtrl.text.trim(),
+          meetingObjective: _objCtrl.text.trim(),
+          offeringDescription: _offerCtrl.text.trim(),
+          stakeholderRole: _roleCtrl.text.trim(),
+        );
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, Routes.trace, arguments: session);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _error = _friendlyError(e));
+      } finally {
+        _stopLoadingAnimation();
+        if (mounted) setState(() => _loading = false);
+      }
+    } else {
+      // Real backend: POST returns immediately → navigate to live pipeline screen
+      try {
+        final start = await repo.startMeeting(
+          organizationName: _orgCtrl.text.trim(),
+          meetingObjective: _objCtrl.text.trim(),
+          offeringDescription: _offerCtrl.text.trim(),
+          stakeholderRole: _roleCtrl.text.trim(),
+        );
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, Routes.live, arguments: start);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _error = _friendlyError(e));
+      } finally {
+        if (mounted) setState(() => _loading = false);
+      }
     }
   }
 
