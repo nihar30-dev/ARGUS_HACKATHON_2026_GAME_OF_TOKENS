@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../app/routes.dart';
 import '../models/session_response.dart';
-import 'agent_trace_screen.dart';
-import 'final_report_screen.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../widgets/error_view.dart';
 
 class AgentDashboardScreen extends StatelessWidget {
   final SessionResponse session;
@@ -17,9 +19,7 @@ class AgentDashboardScreen extends StatelessWidget {
         backgroundColor: cs.surface,
         actions: [
           TextButton.icon(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => AgentTraceScreen(session: session),
-            )),
+            onPressed: () => Navigator.pushNamed(context, Routes.trace, arguments: session),
             icon: const Icon(Icons.account_tree_outlined),
             label: const Text('Trace View'),
           ),
@@ -28,23 +28,38 @@ class AgentDashboardScreen extends StatelessWidget {
       body: Column(
         children: [
           _SessionSummaryBar(session: session),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: session.agentRuns.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (ctx, i) => _AgentRunCard(run: session.agentRuns[i]),
+          if (session.agentRuns.isEmpty)
+            Expanded(
+              child: ErrorView(
+                compact: false,
+                isError: false,
+                icon: Icons.smart_toy_outlined,
+                title: 'No Agents Run Yet',
+                message:
+                    'This session has no agent run data. '
+                    'The pipeline may still be running or may not have started.',
+                onSecondary: () => Navigator.pop(context),
+                secondaryLabel: 'Go Back',
+              ),
+            )
+          else
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                itemCount: session.agentRuns.length,
+                separatorBuilder: (_, __) =>
+                    const SizedBox(height: AppSpacing.smMd),
+                itemBuilder: (ctx, i) =>
+                    _AgentRunCard(run: session.agentRuns[i]),
+              ),
             ),
-          ),
           if (session.finalReport != null)
             Padding(
               padding: const EdgeInsets.all(16),
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => FinalReportScreen(session: session),
-                  )),
+                  onPressed: () => Navigator.pushNamed(context, Routes.report, arguments: session),
                   icon: const Icon(Icons.article_outlined),
                   label: const Text('View Final Meeting Brief'),
                   style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
@@ -110,11 +125,7 @@ class _AgentRunCardState extends State<_AgentRunCard> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final run = widget.run;
-    final confColor = run.confidenceScore >= 0.8
-        ? Colors.green
-        : run.confidenceScore >= 0.5
-            ? Colors.orange
-            : Colors.red;
+    final confColor = AppColors.forConfidence(run.confidenceScore);
 
     return Card(
       child: InkWell(

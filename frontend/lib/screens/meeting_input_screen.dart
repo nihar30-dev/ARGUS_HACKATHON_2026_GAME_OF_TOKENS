@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/api_service.dart';
-import 'agent_dashboard_screen.dart';
+import '../app/routes.dart';
+import '../core/responsive.dart';
+import '../services/meeting_repository.dart';
 
 class MeetingInputScreen extends StatefulWidget {
   const MeetingInputScreen({super.key});
@@ -31,11 +32,16 @@ class _MeetingInputScreenState extends State<MeetingInputScreen> {
     if (!demo && !_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
 
-    final api = context.read<ApiService>();
+    final repo = context.read<MeetingRepository>();
     try {
       final session = demo
-          ? await api.runDemo()
-          : await api.createMeeting(
+          ? await repo.createMeeting(
+              organizationName: 'Apollo Hospitals',
+              meetingObjective: 'Demo',
+              offeringDescription: 'Demo',
+              stakeholderRole: 'CEO',
+            )
+          : await repo.createMeeting(
               organizationName: _orgCtrl.text.trim(),
               meetingObjective: _objCtrl.text.trim(),
               offeringDescription: _offerCtrl.text.trim(),
@@ -43,9 +49,7 @@ class _MeetingInputScreenState extends State<MeetingInputScreen> {
             );
 
       if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(
-        builder: (_) => AgentDashboardScreen(session: session),
-      ));
+      Navigator.pushNamed(context, Routes.dashboard, arguments: session);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -66,7 +70,7 @@ class _MeetingInputScreenState extends State<MeetingInputScreen> {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: Column(
+        child: Responsive.centered(context, Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Prepare Your Meeting',
@@ -125,7 +129,7 @@ class _MeetingInputScreenState extends State<MeetingInputScreen> {
             const SizedBox(height: 32),
             _agentPipelinePreview(cs),
           ],
-        ),
+        )),
       ),
     );
   }
