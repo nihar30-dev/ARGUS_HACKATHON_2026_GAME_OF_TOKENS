@@ -642,9 +642,9 @@ class _ExecutiveBriefCard extends StatelessWidget {
         decoration: AppTheme.brandSurfaceOf(context),
         child: Text(
           brief,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 14,
-            color: AppColors.textPrimary,
+            color: AppColors.textPrimary_(context),
             height: 1.7,
           ),
         ),
@@ -758,10 +758,10 @@ class _PhaseRow extends StatelessWidget {
                       Expanded(
                         child: Text(
                           phase.phase,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                            color: AppColors.textPrimary_(context),
                           ),
                         ),
                       ),
@@ -786,9 +786,9 @@ class _PhaseRow extends StatelessWidget {
                   const SizedBox(height: AppSpacing.xs),
                   Text(
                     phase.approach,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: AppColors.textSecondary,
+                      color: AppColors.textSecondary_(context),
                       height: 1.5,
                     ),
                   ),
@@ -868,9 +868,9 @@ class _QuestionRow extends StatelessWidget {
           Expanded(
             child: Text(
               question,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: AppColors.textPrimary,
+                color: AppColors.textPrimary_(context),
                 height: 1.5,
               ),
             ),
@@ -1030,10 +1030,10 @@ class _ObjectionItem extends StatelessWidget {
                         const SizedBox(height: AppSpacing.xs),
                         Text(
                           objection.objection,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+                            color: AppColors.textPrimary_(context),
                             height: 1.4,
                           ),
                         ),
@@ -1080,9 +1080,9 @@ class _ObjectionItem extends StatelessWidget {
                         const SizedBox(height: AppSpacing.xs),
                         Text(
                           objection.response,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
-                            color: AppColors.textPrimary,
+                            color: AppColors.textPrimary_(context),
                             height: 1.55,
                           ),
                         ),
@@ -1259,7 +1259,7 @@ class _DoItem extends StatelessWidget {
               text,
               style: TextStyle(
                 fontSize: 13,
-                color: AppColors.textPrimary,
+                color: AppColors.textPrimary_(context),
                 height: 1.45,
               ),
             ),
@@ -1315,9 +1315,9 @@ class _NextStepsCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       steps[i],
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
-                        color: AppColors.textPrimary,
+                        color: AppColors.textPrimary_(context),
                         height: 1.5,
                       ),
                     ),

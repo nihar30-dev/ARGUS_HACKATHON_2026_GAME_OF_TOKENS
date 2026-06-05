@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -30,16 +28,6 @@ const _kAgentNames = [
   'Final Synthesis Agent',
 ];
 
-const _kLoadingDescriptions = [
-  'Analyzing hospital history, EMR vendors (Tasy/McKesson), and regional footprint...',
-  'Constructing detailed profile for CEO: focus on clinical APIs and interoperability...',
-  'Framing MEDplat positioning as a unification layer, not vendor replacement...',
-  'Anticipating pushback on integration timeline and HL7 FHIR compliance...',
-  'Checking strategy and objection plays for compliance and claims validation...',
-  'Refining engagement strategy based on critic feedback and objection insights...',
-  'Synthesizing final executive briefing document and strategic playbook...',
-];
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 class MeetingFormScreen extends StatefulWidget {
@@ -60,8 +48,6 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
   late DateTime _meetingDate;
   bool _loading = false;
   String? _error;
-  int _loadingStep = 0;
-  Timer? _loadingTimer;
 
   @override
   void initState() {
@@ -79,7 +65,6 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
     _objCtrl.dispose();
     _offerCtrl.dispose();
     _dateCtrl.dispose();
-    _loadingTimer?.cancel();
     super.dispose();
   }
 
@@ -120,28 +105,6 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
     if (picked != null) _setDate(picked);
   }
 
-  void _startLoadingAnimation() {
-    _loadingStep = 0;
-    final isMock = MeetingRepository.useMockData;
-    // Walk through steps quickly in mock mode so user sees the progress,
-    // otherwise take more time to match real backend LLM pipeline execution.
-    final stepDuration = isMock ? const Duration(milliseconds: 350) : const Duration(milliseconds: 4500);
-
-    _loadingTimer = Timer.periodic(stepDuration, (_) {
-      if (!mounted) return;
-      setState(() {
-        if (_loadingStep < _kAgentNames.length - 1) {
-          _loadingStep++;
-        }
-      });
-    });
-  }
-
-  void _stopLoadingAnimation() {
-    _loadingTimer?.cancel();
-    _loadingTimer = null;
-  }
-
   static String _friendlyError(Object e) {
     if (e is ApiException) {
       if (e.isNetworkError) {
@@ -159,13 +122,11 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
     setState(() => _error = null);
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() { _loading = true; _loadingStep = 0; });
+    setState(() => _loading = true);
 
     final repo = context.read<MeetingRepository>();
 
     if (MeetingRepository.useMockData) {
-      // Mock mode: keep old blocking + animated overlay behaviour
-      _startLoadingAnimation();
       try {
         final session = await repo.createMeeting(
           organizationName: _orgCtrl.text.trim(),
@@ -179,7 +140,6 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
         if (!mounted) return;
         setState(() => _error = _friendlyError(e));
       } finally {
-        _stopLoadingAnimation();
         if (mounted) setState(() => _loading = false);
       }
     } else {
@@ -238,7 +198,6 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
               ),
             ),
           ),
-          if (_loading) _buildLoadingOverlay(),
         ],
       ),
     );
@@ -412,171 +371,6 @@ class _MeetingFormScreenState extends State<MeetingFormScreen> {
     );
   }
 
-  // ── Animated Loading Overlay ──────────────────────────────────────────────
-
-  Widget _buildLoadingOverlay() {
-    final activeAgentName = _kAgentNames[_loadingStep];
-    final activeDescription = _kLoadingDescriptions[_loadingStep];
-
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 300),
-      builder: (context, value, child) => Container(
-        color: Colors.black.withValues(alpha: 0.65 * value),
-        width: double.infinity,
-        height: double.infinity,
-        child: child,
-      ),
-      child: Center(
-        child: Container(
-          width: 480,
-          margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          decoration: AppTheme.cardDecorationOf(context).copyWith(
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 40,
-                spreadRadius: 4,
-              ),
-            ],
-          ),
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: AppSpacing.cardPaddingLg,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3.5,
-                      color: AppColors.brand,
-                    ),
-                  ),
-                  AppSpacing.gapLg,
-                  Text(
-                    'Multi-Agent Pipeline Executing',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Currently Running: $activeAgentName',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.brand,
-                    ),
-                  ),
-                  AppSpacing.gapMd,
-                  Container(
-                    width: double.infinity,
-                    padding: AppSpacing.cardPadding,
-                    decoration: AppTheme.brandSurfaceOf(context),
-                    child: Text(
-                      activeDescription,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        height: 1.5,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                  AppSpacing.gapLg,
-                  const Divider(),
-                  AppSpacing.gapMd,
-                  // Active Progress Stepper List
-                  Column(
-                    children: List.generate(_kAgentNames.length, (index) {
-                      final name = _kAgentNames[index];
-                      final isCompleted = index < _loadingStep;
-                      final isActive = index == _loadingStep;
-
-                      Color itemColor = AppColors.textMuted;
-                      Widget leadingWidget = Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.outline, width: 1.5),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '${index + 1}',
-                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textMuted),
-                        ),
-                      );
-
-                      if (isCompleted) {
-                        itemColor = AppColors.success;
-                        leadingWidget = const Icon(
-                          Icons.check_circle_rounded,
-                          color: AppColors.success,
-                          size: 18,
-                        );
-                      } else if (isActive) {
-                        itemColor = AppColors.brand;
-                        leadingWidget = const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.brand,
-                          ),
-                        );
-                      }
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6.0),
-                        child: Row(
-                          children: [
-                            leadingWidget,
-                            AppSpacing.hGapMd,
-                            Expanded(
-                              child: Text(
-                                name,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                                  color: itemColor,
-                                ),
-                              ),
-                            ),
-                            if (isActive)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                decoration: BoxDecoration(
-                                  color: AppColors.brandSubtle,
-                                  borderRadius: AppSpacing.roundedPill,
-                                ),
-                                child: const Text(
-                                  'RUNNING',
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.brand,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ── Reusable private widgets ──────────────────────────────────────────────────

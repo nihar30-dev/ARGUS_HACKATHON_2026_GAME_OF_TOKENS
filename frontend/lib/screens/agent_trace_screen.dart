@@ -216,6 +216,12 @@ class _AgentTraceScreenState extends State<AgentTraceScreen> {
   }
 
   PreferredSizeWidget _appBar() => AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.pushNamedAndRemoveUntil(
+              context, Routes.home, (_) => false),
+          tooltip: 'Back to Home',
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -357,9 +363,9 @@ class _StatusBar extends StatelessWidget {
     ];
 
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.outline)),
+      decoration: BoxDecoration(
+        color: AppColors.surface_(context),
+        border: Border(bottom: BorderSide(color: AppColors.outline_(context))),
       ),
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md, vertical: AppSpacing.sm),
@@ -946,8 +952,11 @@ class _AgentOutputView extends StatelessWidget {
           if (v == null) return false;
           if (v is bool) return false;
           if (v is num) return false;
+          if (v is Map) return false;
           if (v is String && v.trim().length < 10) return false;
-          if (v is List && (v).isEmpty) return false;
+          if (v is String && (v.trim().toLowerCase() == 'null' || v.trim().toUpperCase() == 'N/A' || v.trim().toLowerCase() == 'none')) return false;
+          if (v is List && v.isEmpty) return false;
+          if (v is List && v.every((x) => x == null || (x is String && x.trim().isEmpty))) return false;
           return true;
         })
         .toList();
@@ -1056,7 +1065,7 @@ class _TextField extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         margin: const EdgeInsets.only(bottom: AppSpacing.sm),
         decoration: BoxDecoration(
-          color: AppColors.surfacePage,
+          color: AppColors.surface_(ctx),
           borderRadius: AppSpacing.roundedMd,
           border: Border(
             left: BorderSide(color: accent, width: 3),
@@ -1191,7 +1200,7 @@ class _ObjectionCardState extends State<_ObjectionCard> {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: AppColors.surfacePage,
+        color: AppColors.surface_(context),
         borderRadius: AppSpacing.roundedMd,
         border: Border.all(color: AppColors.outline_(context)),
       ),
