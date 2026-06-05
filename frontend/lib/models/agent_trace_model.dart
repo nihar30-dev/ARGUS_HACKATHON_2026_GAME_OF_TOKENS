@@ -97,9 +97,9 @@ class AgentTraceModel {
   factory AgentTraceModel.fromJson(Map<String, dynamic> j) => AgentTraceModel(
         id: j['id'] as String?,
         agentName: j['agentName'] as String? ?? '',
-        order: (j['executionOrderIndex'] as num?)?.toInt() ?? 0,
-        inputReceived: j['inputJson'] as String?,
-        outputGenerated: j['outputJson'] as String?,
+        order: (j['executionOrder'] as num?)?.toInt() ?? (j['executionOrderIndex'] as num?)?.toInt() ?? 0,
+        inputReceived: j['inputPayload'] as String? ?? j['inputJson'] as String?,
+        outputGenerated: j['outputPayload'] as String? ?? j['outputJson'] as String?,
         confidenceScore: (j['confidenceScore'] as num?)?.toDouble() ?? 0.0,
         influencedBy: _parseStringList(j['influencedBy']),
         influencesNext: _parseStringList(j['influencesNext']),

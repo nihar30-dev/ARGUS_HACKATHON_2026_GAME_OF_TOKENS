@@ -72,9 +72,39 @@ public class ClaudeService {
         try {
             List<?> content = (List<?>) responseBody.get("content");
             Map<?, ?> block = (Map<?, ?>) content.get(0);
-            return (String) block.get("text");
+            String text = (String) block.get("text");
+            return cleanJsonResponse(text);
         } catch (Exception e) {
             throw new MeetwiseException("Failed to parse Claude response", e);
         }
+    }
+
+    private String cleanJsonResponse(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+        if (t.startsWith("```")) {
+            int firstNewline = t.indexOf('\n');
+            if (firstNewline != -1) t = t.substring(firstNewline + 1).trim();
+            if (t.endsWith("```")) t = t.substring(0, t.lastIndexOf("```")).trim();
+        }
+        int start = t.indexOf('{');
+        if (start != -1) {
+            int depth = 0;
+            boolean inString = false;
+            boolean escape = false;
+            for (int i = start; i < t.length(); i++) {
+                char c = t.charAt(i);
+                if (escape) { escape = false; continue; }
+                if (c == '\\' && inString) { escape = true; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+                if (c == '{') depth++;
+                else if (c == '}') {
+                    depth--;
+                    if (depth == 0) return t.substring(start, i + 1);
+                }
+            }
+        }
+        return t;
     }
 }

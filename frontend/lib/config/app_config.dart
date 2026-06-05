@@ -28,7 +28,7 @@ abstract class AppConfig {
   /// Keep `true` during UI development and demos. Flip to `false` when
   /// the backend is running and you want to test end-to-end.
   // ↓ change this to false to enable the real backend ↓
-  static const bool useMockData = true;
+  static const bool useMockData = false;
 
   // ── Backend URL ───────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ abstract class AppConfig {
   /// Web note: the backend must have CORS configured to allow requests from
   /// the Flutter web origin (e.g. http://localhost:8082 in local dev).
   // ↓ change this URL to point at your backend ↓
-  static const String backendBaseUrl = 'http://localhost:8080/api';
+  static const String backendBaseUrl = 'http://192.1.170.32:8082/api';
 
   // ── Request timeout ───────────────────────────────────────────────────────
 

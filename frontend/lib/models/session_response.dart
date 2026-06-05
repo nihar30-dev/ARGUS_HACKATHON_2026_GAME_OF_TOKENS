@@ -20,11 +20,11 @@ class AgentRun {
   });
 
   factory AgentRun.fromJson(Map<String, dynamic> j) => AgentRun(
-        agentName: j['agentName'] as String,
-        executionOrderIndex: j['executionOrderIndex'] as int,
-        inputJson: j['inputJson'] as String?,
-        outputJson: j['outputJson'] as String,
-        confidenceScore: (j['confidenceScore'] as num).toDouble(),
+        agentName: j['agentName'] as String? ?? '',
+        executionOrderIndex: (j['executionOrder'] as num?)?.toInt() ?? 0,
+        inputJson: j['inputPayload'] as String?,
+        outputJson: j['outputPayload'] as String? ?? '{}',
+        confidenceScore: (j['confidenceScore'] as num?)?.toDouble() ?? 0.0,
         influencedBy: List<String>.from(j['influencedBy'] ?? []),
         usedGemini: j['usedGemini'] as bool? ?? false,
         executionMs: (j['executionMs'] as num?)?.toInt() ?? 0,
@@ -52,8 +52,8 @@ class AgentTrace {
   });
 
   factory AgentTrace.fromJson(Map<String, dynamic> j) => AgentTrace(
-        sourceAgent: j['sourceAgent'] as String,
-        targetAgent: j['targetAgent'] as String,
+        sourceAgent: j['sourceAgent'] as String? ?? '',
+        targetAgent: j['targetAgent'] as String? ?? '',
         inputSummary: j['inputSummary'] as String?,
         outputSummary: j['outputSummary'] as String?,
         influenceDescription: j['influenceDescription'] as String?,
@@ -84,7 +84,7 @@ class FinalReport {
         conversationFlowJson: j['conversationFlowJson'] as String?,
         questionsJson: j['questionsJson'] as String?,
         objectionResponsesJson: j['objectionResponsesJson'] as String?,
-        doAndDontJson: j['doAndDontJson'] as String?,
+        doAndDontJson: null,
         nextStepsJson: j['nextStepsJson'] as String?,
         overallConfidence: (j['overallConfidence'] as num?)?.toDouble() ?? 0.0,
       );
@@ -112,11 +112,11 @@ class SessionResponse {
   });
 
   factory SessionResponse.fromJson(Map<String, dynamic> j) => SessionResponse(
-        sessionId: j['sessionId'] as String,
-        organizationName: j['organizationName'] as String,
+        sessionId: (j['meetingRequestId'] ?? j['sessionId'] ?? '').toString(),
+        organizationName: j['organizationName'] as String? ?? '',
         meetingObjective: j['meetingObjective'] as String?,
         stakeholderRole: j['stakeholderRole'] as String?,
-        status: j['status'] as String,
+        status: j['status'] as String? ?? 'UNKNOWN',
         agentRuns: (j['agentRuns'] as List<dynamic>? ?? [])
             .map((e) => AgentRun.fromJson(e as Map<String, dynamic>))
             .toList(),
