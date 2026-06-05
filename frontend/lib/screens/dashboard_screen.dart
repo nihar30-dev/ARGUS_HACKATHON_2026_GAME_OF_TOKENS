@@ -1,4 +1,8 @@
+import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 
 import '../app/routes.dart';
@@ -9,11 +13,11 @@ import '../services/meeting_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_header.dart';
-import '../widgets/info_card.dart';
-import '../widgets/trace_workflow_widget.dart';
+import '../theme/theme_notifier.dart';
 
-// ── Screen ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Screen
+// ─────────────────────────────────────────────────────────────────────────────
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -23,40 +27,30 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  bool _loadingDemo = false;
+  final _scrollCtrl = ScrollController();
+  bool _navFrosted = false;
 
-  Future<void> _runDemo() async {
-    setState(() => _loadingDemo = true);
-    try {
-      final repo = Provider.of<MeetingRepository>(context, listen: false);
-      if (MeetingRepository.useMockData) {
-        final session = await repo.runDemo();
-        if (!mounted) return;
-        Navigator.pushNamed(context, Routes.trace, arguments: session)
-            .then((_) { if (mounted) setState(() {}); });
-      } else {
-        final start = await repo.startDemo();
-        if (!mounted) return;
-        Navigator.pushNamed(context, Routes.live, arguments: start)
-            .then((_) { if (mounted) setState(() {}); });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error running demo: $e'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _loadingDemo = false);
-    }
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.removeListener(_onScroll);
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    final frosted = _scrollCtrl.offset > 60;
+    if (frosted != _navFrosted) setState(() => _navFrosted = frosted);
   }
 
   void _goNew() {
-    Navigator.pushNamed(context, Routes.newMeeting).then((_) {
-      if (mounted) setState(() {});
-    });
+    Navigator.pushNamed(context, Routes.newMeeting)
+        .then((_) { if (mounted) setState(() {}); });
   }
 
   @override
@@ -65,137 +59,127 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final meetings = repo.recentMeetings;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: _buildAppBar(context),
-      body: _loadingDemo
-          ? _buildDemoLoading()
-          : SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _HeroSection(
-                    onNewMeeting: _goNew,
-                    onViewDemo: _runDemo,
-                  ),
-                  Padding(
-                    padding: Responsive.pagePadding(context),
-                    child: Responsive.centered(
-                      context,
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          AppSpacing.gapXl,
-                          // Workflow preview always shown first — pure visual strip
-                          const _FadeSlide(
-                            delay: Duration(milliseconds: 60),
-                            child: _WorkflowSection(),
-                          ),
-                          AppSpacing.gapXl,
-                          // Meetings section — reads only from repository
-                          _FadeSlide(
-                            delay: const Duration(milliseconds: 160),
-                            child: meetings.isEmpty
-                                ? _EmptyState(
-                                    onNewMeeting: _goNew,
-                                    onRunDemo: _runDemo,
-                                  )
-                                : _MeetingsSection(
-                                    meetings: meetings,
-                                    onNewMeeting: _goNew,
-                                  ),
-                          ),
-                          AppSpacing.gapXl,
-                          const _FadeSlide(
-                            delay: Duration(milliseconds: 260),
-                            child: _FeatureRow(),
-                          ),
-                          AppSpacing.gapXl,
-                        ],
+      body: SingleChildScrollView(
+        controller: _scrollCtrl,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Animated aurora hero ──────────────────────────────────
+            _HeroSection(onNewMeeting: _goNew),
+
+            // ── Pipeline flow preview ─────────────────────────────────
+            const _PipelineSection(),
+
+            // ── Sessions or empty state ───────────────────────────────
+            Padding(
+              padding: Responsive.pagePadding(context),
+              child: Responsive.centered(
+                context,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: AppSpacing.xxxl),
+                    if (meetings.isEmpty)
+                      _FadeIn(
+                        delay: const Duration(milliseconds: 100),
+                        child: _EmptyState(onNewMeeting: _goNew),
+                      )
+                    else
+                      _FadeIn(
+                        delay: const Duration(milliseconds: 100),
+                        child: _SessionsSection(meetings: meetings),
                       ),
+                    const SizedBox(height: AppSpacing.xxxl),
+                    _FadeIn(
+                      delay: const Duration(milliseconds: 200),
+                      child: const _FeatureSection(),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: AppSpacing.xxxl),
+                  ],
+                ),
               ),
             ),
+          ],
+        ),
+      ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) => AppBar(
-        title: const AppHeader(),
-        actions: [
-          const ThemeToggleButton(),
-          Consumer<AuthService>(
-            builder: (ctx, auth, _) => auth.isLoggedIn
-                ? _UserMenu(auth: auth)
-                : TextButton.icon(
-                    onPressed: () =>
-                        Navigator.pushNamed(ctx, Routes.login),
-                    icon: const Icon(Icons.login_rounded, size: 16),
-                    label: const Text('Sign In'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.brand,
-                      textStyle: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
-                  ),
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final notifier = context.watch<ThemeNotifier>();
+
+    // Logo: on dark hero always use dark-bg (white) logo; when frosted use theme
+    final logoAsset = (!_navFrosted || isDark)
+        ? 'assets/logo/meetwise_logo_dark.svg'
+        : 'assets/logo/meetwise_logo.svg';
+
+    // Icon colour: white on hero, theme-appropriate when frosted
+    final iconColor = _navFrosted
+        ? (isDark ? AppColors.tealLight : AppColors.textSecondary)
+        : Colors.white.withValues(alpha: 0.80);
+
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(kToolbarHeight),
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: _navFrosted ? 18 : 0,
+            sigmaY: _navFrosted ? 18 : 0,
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-            child: FilledButton.icon(
-              onPressed: _goNew,
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('New Meeting'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-                minimumSize: const Size(0, 36),
-                textStyle: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
+              color: _navFrosted
+                  ? (isDark
+                      ? const Color(0xCC060C1D)
+                      : Colors.white.withValues(alpha: 0.88))
+                  : Colors.transparent,
+              border: Border(
+                bottom: BorderSide(
+                  color: _navFrosted
+                      ? (isDark ? AppColors.outlineDark : AppColors.outline)
+                      : Colors.transparent,
+                  width: 0.5,
+                ),
               ),
             ),
-          ),
-        ],
-      );
-
-  Widget _buildDemoLoading() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: AppTheme.heroDecoration.copyWith(borderRadius: BorderRadius.zero),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(
-                width: 56,
-                height: 56,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 4.5,
+            child: SafeArea(
+              bottom: false,
+              child: SizedBox(
+                height: kToolbarHeight,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                  child: Row(
+                    children: [
+                      SvgPicture.asset(logoAsset, height: 26, fit: BoxFit.contain),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: notifier.isDark ? 'Light mode' : 'Dark mode',
+                        icon: Icon(
+                          notifier.isDark
+                              ? Icons.light_mode_outlined
+                              : Icons.dark_mode_outlined,
+                          color: iconColor, size: 20,
+                        ),
+                        onPressed: notifier.toggle,
+                      ),
+                      const SizedBox(width: 4),
+                      _NavCTAButton(
+                        label: 'New Meeting',
+                        onPressed: _goNew,
+                        frosted: _navFrosted,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ),
                 ),
               ),
-              AppSpacing.gapLg,
-              const Text(
-                'Initializing Multi-Agent Pipeline…',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              AppSpacing.gapXs,
-              Text(
-                'Orchestrating 6 specialized agents for Apollo Hospitals demo',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
-                  fontSize: 14,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -203,47 +187,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// ── Fade + slide animation wrapper ───────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Painters
+// ─────────────────────────────────────────────────────────────────────────────
 
-class _FadeSlide extends StatelessWidget {
-  final Widget child;
-  final Duration delay;
+class _AuroraPainter extends CustomPainter {
+  final double t1, t2, t3;
+  const _AuroraPainter({required this.t1, required this.t2, required this.t3});
 
-  const _FadeSlide({required this.child, this.delay = Duration.zero});
+  void _drawOrb(Canvas canvas, Size size, double nx, double ny,
+      double radius, Color color, double alpha) {
+    final center = Offset(size.width * nx, size.height * ny);
+    final paint = Paint()
+      ..shader = RadialGradient(
+        colors: [color.withValues(alpha: alpha), Colors.transparent],
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+    canvas.drawCircle(center, radius, paint);
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 420 + delay.inMilliseconds),
-      curve: Curves.easeOut,
-      builder: (context, value, inner) => Opacity(
-        opacity: value.clamp(0.0, 1.0),
-        child: Transform.translate(
-          offset: Offset(0, 18 * (1 - value)),
-          child: inner,
-        ),
-      ),
-      child: child,
-    );
-  }
-}
+  void paint(Canvas canvas, Size size) {
+    _drawOrb(canvas, size,
+        0.72 + 0.15 * math.sin(t1 * math.pi * 2),
+        0.10 + 0.10 * math.cos(t1 * math.pi * 2),
+        size.width * 0.40, const Color(0xFF3B82F6), 0.26);
 
-// ── Dot grid painter (hero background texture) ────────────────────────────────
+    _drawOrb(canvas, size,
+        0.08 + 0.10 * math.cos(t2 * math.pi * 2),
+        0.60 + 0.18 * math.sin(t2 * math.pi * 2),
+        size.width * 0.44, const Color(0xFF8B5CF6), 0.22);
+
+    _drawOrb(canvas, size,
+        0.42 + 0.07 * math.sin(t3 * math.pi * 2 + 1.2),
+        0.35 + 0.07 * math.cos(t3 * math.pi * 2),
+        size.width * 0.28, const Color(0xFF6366F1), 0.16);
+  }
+
+  @override
+  bool shouldRepaint(covariant _AuroraPainter old) =>
+      old.t1 != t1 || old.t2 != t2 || old.t3 != t3;
+}
 
 class _DotGridPainter extends CustomPainter {
   const _DotGridPainter();
 
   @override
   void paint(Canvas canvas, Size size) {
-    const spacing = 30.0;
+    const spacing = 32.0;
     final paint = Paint()
-      ..color = const Color(0x123B82F6) // 7 % brand blue
+      ..color = const Color(0x0F3B82F6)
       ..style = PaintingStyle.fill;
-
     for (double x = spacing / 2; x < size.width; x += spacing) {
       for (double y = spacing / 2; y < size.height; y += spacing) {
-        canvas.drawCircle(Offset(x, y), 1.3, paint);
+        canvas.drawCircle(Offset(x, y), 1.1, paint);
       }
     }
   }
@@ -252,17 +248,86 @@ class _DotGridPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
-// ── Gradient CTA button ───────────────────────────────────────────────────────
+class _FlowDotPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  const _FlowDotPainter({required this.progress, required this.color});
 
+  @override
+  void paint(Canvas canvas, Size size) {
+    final y = size.height / 2;
+
+    // Base line
+    canvas.drawLine(
+      Offset(0, y), Offset(size.width, y),
+      Paint()
+        ..color = color.withValues(alpha: 0.15)
+        ..strokeWidth = 1.2
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final dotX = size.width * progress;
+    final trailStart = math.max(0.0, dotX - 36.0);
+
+    // Trail
+    if (dotX > 2) {
+      canvas.drawLine(
+        Offset(trailStart, y), Offset(dotX, y),
+        Paint()
+          ..shader = LinearGradient(
+            colors: [Colors.transparent, color.withValues(alpha: 0.70)],
+          ).createShader(Rect.fromLTWH(trailStart, y - 1, dotX - trailStart, 2))
+          ..strokeWidth = 2.5
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+
+    // Dot
+    canvas.drawCircle(Offset(dotX, y), 3.0, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(covariant _FlowDotPainter old) =>
+      old.progress != progress;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utility widgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Fade + slide-up entrance animation.
+class _FadeIn extends StatelessWidget {
+  final Widget child;
+  final Duration delay;
+  const _FadeIn({required this.child, this.delay = Duration.zero});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: Duration(milliseconds: 500 + delay.inMilliseconds),
+      curve: Curves.easeOut,
+      builder: (_, v, inner) => Opacity(
+        opacity: v.clamp(0.0, 1.0),
+        child: Transform.translate(offset: Offset(0, 20 * (1 - v)), child: inner),
+      ),
+      child: child,
+    );
+  }
+}
+
+
+/// Gradient-filled primary CTA button.
 class _GradientButton extends StatefulWidget {
   final VoidCallback onPressed;
   final IconData icon;
   final String label;
-
+  final double fontSize;
   const _GradientButton({
     required this.onPressed,
     required this.icon,
     required this.label,
+    this.fontSize = 15,
   });
 
   @override
@@ -279,16 +344,16 @@ class _GradientButtonState extends State<_GradientButton> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
+        duration: const Duration(milliseconds: 180),
         decoration: BoxDecoration(
           gradient: AppColors.brandGradient,
           borderRadius: AppSpacing.roundedMd,
           boxShadow: [
             BoxShadow(
-              color: AppColors.glowBrand,
-              blurRadius: _hovered ? 28 : 16,
+              color: AppColors.brand.withValues(alpha: _hovered ? 0.55 : 0.32),
+              blurRadius: _hovered ? 32 : 18,
               spreadRadius: _hovered ? 0 : -2,
-              offset: const Offset(0, 6),
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -298,27 +363,21 @@ class _GradientButtonState extends State<_GradientButton> {
           child: InkWell(
             onTap: widget.onPressed,
             borderRadius: AppSpacing.roundedMd,
-            splashColor: Colors.white.withValues(alpha: 0.15),
-            highlightColor: Colors.white.withValues(alpha: 0.08),
+            splashColor: Colors.white.withValues(alpha: 0.14),
             child: Padding(
               padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.xl,
-                vertical: AppSpacing.smMd,
-              ),
+                  horizontal: AppSpacing.xl, vertical: AppSpacing.smMd),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(widget.icon, color: Colors.white, size: 17),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    widget.label,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
+                  const SizedBox(width: 8),
+                  Text(widget.label,
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: widget.fontSize,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2)),
                 ],
               ),
             ),
@@ -329,322 +388,299 @@ class _GradientButtonState extends State<_GradientButton> {
   }
 }
 
-// ── Hero ──────────────────────────────────────────────────────────────────────
-
-class _HeroSection extends StatelessWidget {
-  final VoidCallback onNewMeeting;
-  final VoidCallback onViewDemo;
-
-  const _HeroSection({
-    required this.onNewMeeting,
-    required this.onViewDemo,
+/// Nav bar CTA — adapts between glass (on dark hero) and solid (when frosted).
+class _NavCTAButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+  final bool frosted;
+  final bool isDark;
+  const _NavCTAButton({
+    required this.label, required this.onPressed,
+    required this.frosted, required this.isDark,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = Responsive.isMobile(context);
-
-    return SizedBox(
-      width: double.infinity,
-      child: Stack(
-        clipBehavior: Clip.hardEdge,
-        children: [
-          // ── Base gradient ──────────────────────────────────────────────────
-          const Positioned.fill(
-            child: DecoratedBox(decoration: AppTheme.heroDecoration),
-          ),
-
-          // ── Dot grid texture ───────────────────────────────────────────────
-          const Positioned.fill(
-            child: RepaintBoundary(
-              child: CustomPaint(painter: _DotGridPainter()),
-            ),
-          ),
-
-          // ── Blue glow — top right ──────────────────────────────────────────
-          Positioned(
-            top: -110,
-            right: -120,
-            child: Container(
-              width: 420,
-              height: 420,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.brand.withValues(alpha: 0.20),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // ── Violet glow — bottom left ──────────────────────────────────────
-          Positioned(
-            bottom: -130,
-            left: -80,
-            child: Container(
-              width: 460,
-              height: 460,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.teal.withValues(alpha: 0.16),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // ── Indigo glow — centre ──────────────────────────────────────────
-          Positioned(
-            top: 20,
-            left: isMobile ? 80 : 300,
-            child: Container(
-              width: 320,
-              height: 260,
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.accent.withValues(alpha: 0.10),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // ── Content ────────────────────────────────────────────────────────
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? AppSpacing.lg : AppSpacing.xxxl,
-              vertical: isMobile ? AppSpacing.xxl : AppSpacing.xxxl,
-            ),
-            child: Responsive.centered(
-              context,
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Hackathon badge
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 350),
-                    curve: Curves.easeOut,
-                    builder: (_, v, child) =>
-                        Opacity(opacity: v, child: child),
-                    child: _HeroBadge(),
-                  ),
-                  AppSpacing.gapMd,
-
-                  // Title
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 480),
-                    curve: Curves.easeOut,
-                    builder: (_, v, child) => Opacity(
-                      opacity: v,
-                      child: Transform.translate(
-                          offset: Offset(0, 14 * (1 - v)), child: child),
-                    ),
-                    child: _HeroTitle(isMobile: isMobile),
-                  ),
-                  AppSpacing.gapLg,
-
-                  // Description
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 580),
-                    curve: Curves.easeOut,
-                    builder: (_, v, child) =>
-                        Opacity(opacity: v, child: child),
-                    child: const _HeroDescription(),
-                  ),
-                  AppSpacing.gapLg,
-
-                  // CTAs
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 680),
-                    curve: Curves.easeOut,
-                    builder: (_, v, child) =>
-                        Opacity(opacity: v, child: child),
-                    child: _HeroCTAs(
-                      onNewMeeting: onNewMeeting,
-                      onViewDemo: onViewDemo,
-                    ),
-                  ),
-
-                  // Agent count strip
-                  AppSpacing.gapXl,
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 780),
-                    curve: Curves.easeOut,
-                    builder: (_, v, child) =>
-                        Opacity(opacity: v, child: child),
-                    child: const _HeroAgentStrip(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeroBadge extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: AppSpacing.roundedPill,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.tealLight, // violet dot
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          const Text(
-            'ARGUS Hackathon 2026  ·  Multi-Agent AI Platform',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0.3,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeroTitle extends StatelessWidget {
-  final bool isMobile;
-  const _HeroTitle({required this.isMobile});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Gradient text on "MeetWise"
-        ShaderMask(
-          shaderCallback: (bounds) =>
-              AppColors.brandGradient.createShader(bounds),
-          blendMode: BlendMode.srcIn,
-          child: Text(
-            'MeetWise',
-            style: TextStyle(
-              color: Colors.white, // masked by ShaderMask
-              fontSize: isMobile ? 44 : 58,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -2.0,
-              height: 1.0,
-            ),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          'AI-Powered Meeting Intelligence',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.85),
-            fontSize: isMobile ? 17 : 23,
-            fontWeight: FontWeight.w300,
-            height: 1.3,
-            letterSpacing: -0.4,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _HeroDescription extends StatelessWidget {
-  const _HeroDescription();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.07),
+    if (!frosted) {
+      // On dark hero: glass button
+      return ClipRRect(
         borderRadius: AppSpacing.roundedMd,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Material(
+            color: Colors.white.withValues(alpha: 0.12),
+            borderRadius: AppSpacing.roundedMd,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: AppSpacing.roundedMd,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: AppSpacing.roundedMd,
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.add, size: 14, color: Colors.white),
+                    const SizedBox(width: 6),
+                    Text(label,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Frosted nav: gradient pill button
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppColors.brandGradient,
+        borderRadius: AppSpacing.roundedMd,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brand.withValues(alpha: 0.28),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: const Text(
-        '6 specialized agents collaborate in sequence — each agent reads and challenges the outputs of every prior agent — producing a meeting strategy no single model could.',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          height: 1.6,
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: AppSpacing.roundedMd,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: AppSpacing.roundedMd,
+          splashColor: Colors.white.withValues(alpha: 0.14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.add, size: 14, color: Colors.white),
+                const SizedBox(width: 6),
+                Text(label,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _HeroCTAs extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero — animated aurora, gradient title, agent strip
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HeroSection extends StatefulWidget {
   final VoidCallback onNewMeeting;
-  final VoidCallback onViewDemo;
-  const _HeroCTAs({required this.onNewMeeting, required this.onViewDemo});
+  const _HeroSection({required this.onNewMeeting});
+
+  @override
+  State<_HeroSection> createState() => _HeroSectionState();
+}
+
+class _HeroSectionState extends State<_HeroSection>
+    with TickerProviderStateMixin {
+  late final AnimationController _orb1, _orb2, _orb3, _fadeIn;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _orb1  = AnimationController(vsync: this, duration: const Duration(seconds: 9))..repeat(reverse: true);
+    _orb2  = AnimationController(vsync: this, duration: const Duration(seconds: 13))..repeat(reverse: true);
+    _orb3  = AnimationController(vsync: this, duration: const Duration(seconds: 11))..repeat(reverse: true);
+    _fadeIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..forward();
+    _fade   = CurvedAnimation(parent: _fadeIn, curve: Curves.easeOut);
+  }
+
+  @override
+  void dispose() {
+    _orb1.dispose(); _orb2.dispose(); _orb3.dispose(); _fadeIn.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: AppSpacing.sm,
-      runSpacing: AppSpacing.sm,
-      children: [
-        _GradientButton(
-          onPressed: onNewMeeting,
-          icon: Icons.auto_awesome,
-          label: 'New Meeting Intelligence',
-        ),
-        OutlinedButton.icon(
-          onPressed: onViewDemo,
-          icon: const Icon(Icons.play_circle_outline, size: 17),
-          label: const Text('Run Apollo Hospitals Demo'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.white,
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.xl, vertical: AppSpacing.smMd),
-            textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+    final isMobile = Responsive.isMobile(context);
+    final screenH  = MediaQuery.sizeOf(context).height;
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([_orb1, _orb2, _orb3, _fadeIn]),
+      builder: (context, child) {
+        return Container(
+          width: double.infinity,
+          constraints: BoxConstraints(minHeight: screenH * (isMobile ? 0.68 : 0.78)),
+          decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+          child: Stack(
+            children: [
+              // Aurora orbs
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _AuroraPainter(
+                        t1: _orb1.value, t2: _orb2.value, t3: _orb3.value),
+                  ),
+                ),
+              ),
+              // Dot grid
+              const Positioned.fill(
+                child: CustomPaint(painter: _DotGridPainter()),
+              ),
+              // Bottom fade to scaffold
+              Positioned(
+                left: 0, right: 0, bottom: 0,
+                child: Container(
+                  height: 80,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Theme.of(context).scaffoldBackgroundColor,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // Content
+              FadeTransition(
+                opacity: _fade,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.05),
+                    end: Offset.zero,
+                  ).animate(_fade),
+                  child: child,
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+        );
+      },
+      child: _HeroContent(onNewMeeting: widget.onNewMeeting),
     );
   }
 }
 
-class _HeroAgentStrip extends StatelessWidget {
-  const _HeroAgentStrip();
+class _HeroContent extends StatelessWidget {
+  final VoidCallback onNewMeeting;
+  const _HeroContent({required this.onNewMeeting});
 
-  static const _steps = [
-    (Icons.person_rounded, 'You'),
-    (Icons.search_rounded, 'Research'),
-    (Icons.person_pin_rounded, 'Persona'),
-    (Icons.lightbulb_rounded, 'Strategy'),
-    (Icons.warning_amber_rounded, 'Objection'),
-    (Icons.fact_check_rounded, 'Critic'),
-    (Icons.summarize_rounded, 'Final Brief'),
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = Responsive.isMobile(context);
+    final appBarH  = MediaQuery.paddingOf(context).top + kToolbarHeight;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? AppSpacing.lg : AppSpacing.xxxl,
+        appBarH + (isMobile ? AppSpacing.xxl : AppSpacing.xxxl),
+        isMobile ? AppSpacing.lg : AppSpacing.xxxl,
+        AppSpacing.xxxl,
+      ),
+      child: Responsive.centered(
+        context,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Gradient wordmark
+            ShaderMask(
+              shaderCallback: (b) =>
+                  AppColors.brandGradient.createShader(b),
+              blendMode: BlendMode.srcIn,
+              child: Text(
+                'MeetWise',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: isMobile ? 48 : 72,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -3,
+                  height: 0.95,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+
+            // Sub-headline
+            Text(
+              'AI Meeting Intelligence\nPowered by 6 Agents',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.75),
+                fontSize: isMobile ? 19 : 26,
+                fontWeight: FontWeight.w300,
+                height: 1.25,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xxl),
+
+            // Description glass pill
+            ClipRRect(
+              borderRadius: AppSpacing.roundedLg,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: AppSpacing.roundedLg,
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12)),
+                  ),
+                  child: Text(
+                    'Each agent reads every prior output, challenges assumptions, and builds on the collective intelligence — producing a meeting strategy no single model could.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: isMobile ? 13 : 14,
+                      height: 1.65,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+
+            // CTA
+            _GradientButton(
+              onPressed: onNewMeeting,
+              icon: Icons.auto_awesome,
+              label: 'New Meeting Intelligence',
+            ),
+            const SizedBox(height: AppSpacing.xxxl),
+
+            // Agent pipeline strip
+            const _HeroPipelineStrip(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroPipelineStrip extends StatelessWidget {
+  const _HeroPipelineStrip();
+
+  static const _agents = [
+    (Icons.person_rounded, 'You', false),
+    (Icons.search_rounded, 'Research', true),
+    (Icons.person_pin_rounded, 'Persona', false),
+    (Icons.lightbulb_rounded, 'Strategy', true),
+    (Icons.warning_amber_rounded, 'Objection', true),
+    (Icons.fact_check_rounded, 'Critic', false),
+    (Icons.summarize_rounded, 'Final', true),
   ];
 
   @override
@@ -653,14 +689,18 @@ class _HeroAgentStrip extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          for (var i = 0; i < _steps.length; i++) ...[
-            _StepPill(icon: _steps[i].$1, label: _steps[i].$2, isFirst: i == 0, isLast: i == _steps.length - 1),
-            if (i < _steps.length - 1)
+          for (var i = 0; i < _agents.length; i++) ...[
+            _PipelinePill(
+              icon: _agents[i].$1,
+              label: _agents[i].$2,
+              isGemini: _agents[i].$3,
+              highlight: i == 0 || i == _agents.length - 1,
+            ),
+            if (i < _agents.length - 1)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(Icons.chevron_right_rounded,
-                    size: 14,
-                    color: Colors.white.withValues(alpha: 0.30)),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Icon(Icons.chevron_right_rounded, size: 13,
+                    color: Colors.white.withValues(alpha: 0.28)),
               ),
           ],
         ],
@@ -669,642 +709,683 @@ class _HeroAgentStrip extends StatelessWidget {
   }
 }
 
-class _StepPill extends StatelessWidget {
+class _PipelinePill extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool isFirst;
-  final bool isLast;
-
-  const _StepPill({
-    required this.icon,
-    required this.label,
-    this.isFirst = false,
-    this.isLast = false,
+  final bool isGemini;
+  final bool highlight;
+  const _PipelinePill({
+    required this.icon, required this.label,
+    required this.isGemini, required this.highlight,
   });
 
   @override
   Widget build(BuildContext context) {
-    final highlight = isFirst || isLast;
+    final color = isGemini ? AppColors.brand : AppColors.ruleBased;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: highlight
-            ? Colors.white.withValues(alpha: 0.14)
-            : Colors.white.withValues(alpha: 0.06),
+            ? Colors.white.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.05),
         borderRadius: AppSpacing.roundedPill,
         border: Border.all(
           color: highlight
-              ? Colors.white.withValues(alpha: 0.30)
+              ? color.withValues(alpha: 0.60)
               : Colors.white.withValues(alpha: 0.10),
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon,
-              size: 12,
-              color: highlight
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.65)),
+          Icon(icon, size: 12,
+              color: highlight ? color : Colors.white.withValues(alpha: 0.55)),
           const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
-              color: highlight
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.65),
-              letterSpacing: 0.1,
-            ),
-          ),
+          Text(label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
+                color: highlight
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.55),
+              )),
         ],
       ),
     );
   }
 }
 
-// ── Workflow section (pure visual preview — no live run data) ─────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Pipeline section — animated flow diagram
+// ─────────────────────────────────────────────────────────────────────────────
 
-class _WorkflowSection extends StatelessWidget {
-  const _WorkflowSection();
+class _PipelineSection extends StatefulWidget {
+  const _PipelineSection();
+
+  @override
+  State<_PipelineSection> createState() => _PipelineSectionState();
+}
+
+class _PipelineSectionState extends State<_PipelineSection>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _flow;
+
+  @override
+  void initState() {
+    super.initState();
+    _flow = AnimationController(
+        vsync: this, duration: const Duration(seconds: 3))
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _flow.dispose();
+    super.dispose();
+  }
+
+  static const _nodes = [
+    _AgentNode(Icons.search_rounded, 'Research', '1', true, Color(0xFF3B82F6)),
+    _AgentNode(Icons.person_pin_rounded, 'Persona', '2', false, Color(0xFF10B981)),
+    _AgentNode(Icons.lightbulb_rounded, 'Strategy', '3', true, Color(0xFF3B82F6)),
+    _AgentNode(Icons.warning_amber_rounded, 'Objection', '4', true, Color(0xFF6366F1)),
+    _AgentNode(Icons.fact_check_rounded, 'Critic', '5', false, Color(0xFF10B981)),
+    _AgentNode(Icons.summarize_rounded, 'Final', '6', true, Color(0xFF8B5CF6)),
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isMobile = Responsive.isMobile(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section header
-        if (isMobile)
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [const Color(0xFF080F1E), const Color(0xFF0B1225)]
+              : [const Color(0xFF0F172A), const Color(0xFF1E1B4B)],
+        ),
+        border: Border(
+          top: BorderSide(color: AppColors.brand.withValues(alpha: 0.18)),
+          bottom: BorderSide(color: AppColors.brand.withValues(alpha: 0.10)),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? AppSpacing.lg : AppSpacing.xxxl,
+          vertical: AppSpacing.xxxl,
+        ),
+        child: Responsive.centered(
+          context,
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('AGENT WORKFLOW', style: AppTheme.overlineStyle),
-              AppSpacing.gapXs,
-              Text(
-                'Each agent reads all prior outputs — interdependency is the strategy.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              AppSpacing.gapSm,
-              const WorkflowLegend(),
-            ],
-          )
-        else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('AGENT WORKFLOW', style: AppTheme.overlineStyle),
-                    AppSpacing.gapXs,
-                    Text(
-                      'Each agent reads all prior outputs — interdependency is the strategy.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              AppSpacing.hGapLg,
-              const WorkflowLegend(),
-            ],
-          ),
-        AppSpacing.gapMd,
-
-        // Idle workflow diagram — runs: null renders all nodes in preview state
-        Container(
-          decoration: AppTheme.cardDecorationOf(context),
-          child: const TraceWorkflowWidget(
-            runs: null,
-            direction: Axis.horizontal,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Meetings section (data from repository only) ──────────────────────────────
-
-class _MeetingsSection extends StatelessWidget {
-  final List<SessionResponse> meetings;
-  final VoidCallback onNewMeeting;
-
-  const _MeetingsSection({
-    required this.meetings,
-    required this.onNewMeeting,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('LATEST MEETING BRIEFING', style: AppTheme.overlineStyle),
-        AppSpacing.gapSm,
-        _buildMainGrid(context, meetings.first),
-        if (meetings.length > 1) ...[
-          AppSpacing.gapXl,
-          Text('PREVIOUS BRIEFINGS', style: AppTheme.overlineStyle),
-          AppSpacing.gapSm,
-          _buildPreviousMeetingsList(context, meetings.skip(1).toList()),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildMainGrid(BuildContext context, SessionResponse session) {
-    final isMobile = Responsive.isMobile(context);
-    final cards = [
-      Expanded(
-        child: _FadeSlide(
-          delay: const Duration(milliseconds: 80),
-          child: _RecentMeetingCard(session: session),
-        ),
-      ),
-      if (!isMobile) AppSpacing.hGapLg,
-      if (isMobile) AppSpacing.gapMd,
-      Expanded(
-        child: _FadeSlide(
-          delay: const Duration(milliseconds: 140),
-          child: _AgentStatsCard(session: session),
-        ),
-      ),
-    ];
-
-    return isMobile
-        ? Column(children: cards)
-        : Row(crossAxisAlignment: CrossAxisAlignment.start, children: cards);
-  }
-
-  Widget _buildPreviousMeetingsList(
-      BuildContext context, List<SessionResponse> previousMeetings) {
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: previousMeetings.length,
-      separatorBuilder: (_, __) => AppSpacing.gapSm,
-      itemBuilder: (context, index) {
-        final session = previousMeetings[index];
-        final avgConf = session.agentRuns.isEmpty
-            ? 0.0
-            : session.agentRuns
-                    .map((r) => r.confidenceScore)
-                    .reduce((a, b) => a + b) /
-                session.agentRuns.length;
-
-        return _FadeSlide(
-          delay: Duration(milliseconds: 60 * index),
-          child: Container(
-            decoration: AppTheme.cardDecorationOf(context),
-            child: ListTile(
-              leading: Container(
-                width: 32,
-                height: 32,
-                decoration: const BoxDecoration(
-                  color: AppColors.brandSubtle,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.business_outlined,
-                    color: AppColors.brand, size: 16),
-              ),
-              title: Text(
-                session.organizationName,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              subtitle: Text(
-                [
-                  if (session.stakeholderRole != null) session.stakeholderRole!,
-                  if (session.meetingObjective != null) session.meetingObjective!,
-                ].join(' · '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+              // Header
+              Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm, vertical: 2),
+                        horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.forConfidenceSurface(avgConf),
+                      color: AppColors.brand.withValues(alpha: 0.15),
                       borderRadius: AppSpacing.roundedPill,
+                      border: Border.all(
+                          color: AppColors.brand.withValues(alpha: 0.35)),
                     ),
                     child: Text(
-                      '${(avgConf * 100).toStringAsFixed(0)}% Match',
+                      'HOW IT WORKS',
                       style: TextStyle(
-                        fontSize: 11,
+                        color: AppColors.brandMid,
+                        fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.forConfidence(avgConf),
+                        letterSpacing: 1.0,
                       ),
-                    ),
-                  ),
-                  AppSpacing.hGapSm,
-                  IconButton(
-                    icon: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
-                    onPressed: () => Navigator.pushNamed(
-                      context,
-                      Routes.trace,
-                      arguments: session,
                     ),
                   ),
                 ],
               ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ── Empty State ───────────────────────────────────────────────────────────────
-
-class _EmptyState extends StatelessWidget {
-  final VoidCallback onNewMeeting;
-  final VoidCallback onRunDemo;
-
-  const _EmptyState({
-    required this.onNewMeeting,
-    required this.onRunDemo,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.xl,
-        vertical: AppSpacing.xxl,
-      ),
-      decoration: AppTheme.cardDecorationOf(context),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: const BoxDecoration(
-              color: AppColors.brandLight,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.assignment_outlined,
-              color: AppColors.brand,
-              size: 30,
-            ),
-          ),
-          AppSpacing.gapMd,
-          Text(
-            'No Meeting Strategies Yet',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: Text(
-              'Generate your first meeting intelligence brief. Six specialized agents will collaborate to analyse your prospect, predict objections, and construct an engagement playbook.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: 1.55,
-              ),
-            ),
-          ),
-          AppSpacing.gapLg,
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            alignment: WrapAlignment.center,
-            children: [
-              FilledButton.icon(
-                onPressed: onNewMeeting,
-                icon: const Icon(Icons.auto_awesome, size: 16),
-                label: const Text('New Meeting Intelligence'),
-              ),
-              OutlinedButton.icon(
-                onPressed: onRunDemo,
-                icon: const Icon(Icons.play_circle_outline, size: 16),
-                label: const Text('Try Apollo Hospitals Demo'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Recent meeting card ───────────────────────────────────────────────────────
-
-class _RecentMeetingCard extends StatelessWidget {
-  final SessionResponse session;
-
-  const _RecentMeetingCard({required this.session});
-
-  @override
-  Widget build(BuildContext context) {
-    final avgConf = session.agentRuns.isEmpty
-        ? 0.0
-        : session.agentRuns
-                .map((r) => r.confidenceScore)
-                .reduce((a, b) => a + b) /
-            session.agentRuns.length;
-    final totalMs =
-        session.agentRuns.fold<int>(0, (s, r) => s + r.executionMs);
-
-    return Container(
-      decoration: AppTheme.cardDecorationOf(context),
-      padding: AppSpacing.cardPaddingLg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header row
-          Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: const BoxDecoration(
-                  color: AppColors.brandSubtle,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.business_outlined,
-                    color: AppColors.brand, size: 18),
-              ),
-              AppSpacing.hGapMd,
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      session.organizationName,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          color: AppColors.textPrimary),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      [
-                        if (session.stakeholderRole != null)
-                          session.stakeholderRole!,
-                        'Briefing Session',
-                      ].join(' · '),
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
-              _StatusBadge(status: session.status),
-            ],
-          ),
-
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-            child: Divider(),
-          ),
-
-          // Metrics grid
-          Row(
-            children: [
-              _MetricTile(
-                value: '${(avgConf * 100).toStringAsFixed(0)}%',
-                label: 'Avg Confidence',
-                color: AppColors.forConfidence(avgConf),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              _MetricTile(
-                value: '${session.agentRuns.length}',
-                label: 'Agents Run',
-                color: AppColors.brand,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              _MetricTile(
-                value: '${session.traces.length}',
-                label: 'Trace Links',
-                color: AppColors.accent,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              _MetricTile(
-                value: '${(totalMs / 1000).toStringAsFixed(1)}s',
-                label: 'Runtime',
-                color: AppColors.textSecondary,
-              ),
-            ],
-          ),
-
-          AppSpacing.gapMd,
-
-          // Confidence bars per agent
-          ...session.agentRuns.take(3).map((run) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: _AgentConfidenceRow(run: run),
-              )),
-          if (session.agentRuns.length > 3)
-            Text(
-              '+ ${session.agentRuns.length - 3} more agents',
-              style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w500),
-            ),
-
-          AppSpacing.gapMd,
-
-          // Action buttons
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () => Navigator.pushNamed(
-                      context, Routes.trace,
-                      arguments: session),
-                  icon: const Icon(Icons.account_tree_outlined, size: 16),
-                  label: const Text('View Trace'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: AppSpacing.smMd),
-                    textStyle: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
+              const SizedBox(height: AppSpacing.md),
+              ShaderMask(
+                shaderCallback: (b) =>
+                    AppColors.brandGradient.createShader(b),
+                blendMode: BlendMode.srcIn,
+                child: Text(
+                  'The 6-Agent Intelligence Pipeline',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: isMobile ? 22 : 30,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                    height: 1.2,
                   ),
                 ),
               ),
-              AppSpacing.hGapSm,
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.pushNamed(
-                      context, Routes.report,
-                      arguments: session),
-                  icon: const Icon(Icons.article_outlined, size: 16),
-                  label: const Text('View Report'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: AppSpacing.smMd),
-                    textStyle: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Agent stats card ──────────────────────────────────────────────────────────
-
-class _AgentStatsCard extends StatelessWidget {
-  final SessionResponse session;
-
-  const _AgentStatsCard({required this.session});
-
-  @override
-  Widget build(BuildContext context) {
-    final geminiCount = session.agentRuns.where((r) => r.usedGemini).length;
-    final ruleCount = session.agentRuns.length - geminiCount;
-    final avgConf = session.agentRuns.isEmpty
-        ? 0.0
-        : session.agentRuns
-                .map((r) => r.confidenceScore)
-                .reduce((a, b) => a + b) /
-            session.agentRuns.length;
-
-    return Container(
-      decoration: AppTheme.cardDecorationOf(context),
-      padding: AppSpacing.cardPaddingLg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'PIPELINE METRICS',
-            style: AppTheme.overlineStyle,
-          ),
-          AppSpacing.gapMd,
-
-          // Stat grid — 2×2
-          Row(
-            children: [
-              Expanded(
-                child: InfoCard(
-                  value: '${session.agentRuns.length}',
-                  label: 'Total Agents',
-                  icon: Icons.smart_toy_outlined,
-                  background: AppColors.brandSubtle,
-                  foreground: AppColors.brand,
-                ),
-              ),
-              AppSpacing.hGapSm,
-              Expanded(
-                child: InfoCard(
-                  value: '${session.traces.length}',
-                  label: 'Trace Links',
-                  icon: Icons.account_tree_outlined,
-                  background: AppColors.accentSubtle,
-                  foreground: AppColors.accent,
-                ),
-              ),
-            ],
-          ),
-          AppSpacing.gapSm,
-          Row(
-            children: [
-              Expanded(
-                child: InfoCard(
-                  value: '$geminiCount',
-                  label: 'Gemini AI',
-                  icon: Icons.auto_awesome,
-                  background: AppColors.geminiSurface,
-                  foreground: AppColors.gemini,
-                ),
-              ),
-              AppSpacing.hGapSm,
-              Expanded(
-                child: InfoCard(
-                  value: '$ruleCount',
-                  label: 'Rule-Based',
-                  icon: Icons.rule_outlined,
-                  background: AppColors.ruleBasedSurface,
-                  foreground: AppColors.ruleBased,
-                ),
-              ),
-            ],
-          ),
-
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-            child: Divider(),
-          ),
-
-          // Overall readiness bar
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Overall Readiness',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary),
-              ),
+              const SizedBox(height: AppSpacing.xs),
               Text(
-                '${(avgConf * 100).toStringAsFixed(0)}%',
+                'Each agent reads every prior output — building compounding intelligence.',
                 style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.forConfidence(avgConf),
+                  color: Colors.white.withValues(alpha: 0.45),
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+
+              // Pipeline flow
+              AnimatedBuilder(
+                animation: _flow,
+                builder: (context, _) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // "You" input node
+                        _InputNode(),
+                        _buildConnector(0),
+                        for (var i = 0; i < _nodes.length; i++) ...[
+                          _AgentNodeCard(node: _nodes[i]),
+                          if (i < _nodes.length - 1)
+                            _buildConnector(i + 1),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: AppSpacing.xxl),
+
+              // Legend row
+              Row(
+                children: [
+                  _LegendChip(
+                    color: AppColors.brand,
+                    label: 'Gemini AI',
+                    icon: Icons.auto_awesome,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  _LegendChip(
+                    color: AppColors.ruleBased,
+                    label: 'Rule-based',
+                    icon: Icons.rule_outlined,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Text(
+                    '· Each agent reads all prior outputs',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.30),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnector(int index) {
+    final nodeColor = index == 0
+        ? AppColors.brand
+        : _nodes[math.min(index - 1, _nodes.length - 1)].color;
+    final progress = (_flow.value + index * 0.18) % 1.0;
+
+    return SizedBox(
+      width: 56,
+      height: 88, // align with node card height
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          width: 56,
+          height: 16,
+          child: CustomPaint(
+            painter: _FlowDotPainter(progress: progress, color: nodeColor),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AgentNode {
+  final IconData icon;
+  final String label;
+  final String order;
+  final bool isGemini;
+  final Color color;
+  const _AgentNode(this.icon, this.label, this.order, this.isGemini, this.color);
+}
+
+class _InputNode extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            shape: BoxShape.circle,
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.18), width: 1.5),
+          ),
+          child: Icon(Icons.person_rounded,
+              color: Colors.white.withValues(alpha: 0.70), size: 30),
+        ),
+        const SizedBox(height: 10),
+        Text('You',
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.55),
+                fontSize: 12,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: AppSpacing.roundedPill,
+          ),
+          child: Text('Input',
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.40),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600)),
+        ),
+      ],
+    );
+  }
+}
+
+class _AgentNodeCard extends StatelessWidget {
+  final _AgentNode node;
+  const _AgentNodeCard({required this.node});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Glowing circle
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: node.color.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+            border: Border.all(color: node.color.withValues(alpha: 0.50), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: node.color.withValues(alpha: 0.25),
+                blurRadius: 20,
+                spreadRadius: -2,
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Icon(node.icon, color: node.color, size: 28),
+              Positioned(
+                bottom: 8, right: 8,
+                child: Container(
+                  width: 18, height: 18,
+                  decoration: BoxDecoration(
+                    color: node.color,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(node.order,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900)),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
-          ClipRRect(
+        ),
+        const SizedBox(height: 10),
+        Text(node.label,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 12,
+                fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: node.color.withValues(alpha: 0.15),
             borderRadius: AppSpacing.roundedPill,
-            child: LinearProgressIndicator(
-              value: avgConf,
-              minHeight: 8,
-              backgroundColor: AppColors.brandSubtle,
-              valueColor:
-                  AlwaysStoppedAnimation(AppColors.forConfidence(avgConf)),
-            ),
+            border: Border.all(color: node.color.withValues(alpha: 0.30)),
           ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(node.isGemini ? Icons.auto_awesome : Icons.rule_outlined,
+                  size: 8, color: node.color),
+              const SizedBox(width: 3),
+              Text(node.isGemini ? 'Gemini' : 'Rules',
+                  style: TextStyle(
+                      color: node.color,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
-          AppSpacing.gapMd,
+class _LegendChip extends StatelessWidget {
+  final Color color;
+  final String label;
+  final IconData icon;
+  const _LegendChip({required this.color, required this.label, required this.icon});
 
-          // Critic validator highlight
-          Container(
-            padding: AppSpacing.cardPadding,
-            decoration: const BoxDecoration(
-              color: AppColors.warningLight,
-              borderRadius: AppSpacing.roundedMd,
-              border: Border.fromBorderSide(
-                  BorderSide(color: AppColors.warningSubtle)),
-            ),
-            child: Row(
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 20, height: 20,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: color.withValues(alpha: 0.40)),
+          ),
+          child: Icon(icon, size: 11, color: color),
+        ),
+        const SizedBox(width: 6),
+        Text(label,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.50),
+                fontSize: 12,
+                fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sessions section — premium cards from repository only
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SessionsSection extends StatelessWidget {
+  final List<SessionResponse> meetings;
+  const _SessionsSection({required this.meetings});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.fact_check_outlined,
-                    color: AppColors.warning, size: 18),
-                AppSpacing.hGapSm,
-                const Expanded(
-                  child: Text(
-                    'Critic Validator checks all prior outputs, flags unsupported claims, and ensures Final Synthesis is fully validated.',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.warning,
-                        height: 1.4,
-                        fontWeight: FontWeight.w500),
+                Text('INTELLIGENCE REPORTS', style: AppTheme.overlineStyle),
+                const SizedBox(height: 4),
+                Text(
+                  'Your meeting strategies',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+
+        // Latest — featured full-width card
+        _FeaturedSessionCard(session: meetings.first),
+
+        // Previous — compact list
+        if (meetings.length > 1) ...[
+          const SizedBox(height: AppSpacing.xl),
+          Text('PREVIOUS', style: AppTheme.overlineStyle),
+          const SizedBox(height: AppSpacing.md),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: meetings.length - 1,
+            separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+            itemBuilder: (context, i) =>
+                _CompactSessionCard(session: meetings[i + 1], delay: i * 60),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FeaturedSessionCard extends StatelessWidget {
+  final SessionResponse session;
+  const _FeaturedSessionCard({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final avgConf = session.agentRuns.isEmpty
+        ? 0.0
+        : session.agentRuns.map((r) => r.confidenceScore).reduce((a, b) => a + b) /
+            session.agentRuns.length;
+    final totalMs = session.agentRuns.fold<int>(0, (s, r) => s + r.executionMs);
+    final confColor = AppColors.forConfidence(avgConf);
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: isDark
+            ? AppColors.darkSurfaceGradient
+            : AppColors.surfaceGradient,
+        borderRadius: AppSpacing.roundedXl,
+        border: Border.all(
+          color: isDark ? AppColors.outlineDark : AppColors.brandSubtle,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brand.withValues(alpha: isDark ? 0.10 : 0.06),
+            blurRadius: 40,
+            spreadRadius: -4,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Top: org + status + confidence ring
+          Padding(
+            padding: AppSpacing.cardPaddingLg,
+            child: Row(
+              children: [
+                // Confidence ring
+                SizedBox(
+                  width: 72, height: 72,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        value: 1.0, strokeWidth: 5,
+                        valueColor: AlwaysStoppedAnimation(
+                          (isDark ? Colors.white : AppColors.textPrimary)
+                              .withValues(alpha: 0.06),
+                        ),
+                      ),
+                      CircularProgressIndicator(
+                        value: avgConf, strokeWidth: 5,
+                        strokeCap: StrokeCap.round,
+                        valueColor: AlwaysStoppedAnimation(confColor),
+                      ),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            (avgConf * 100).toStringAsFixed(0),
+                            style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w900,
+                              color: confColor, height: 1.0,
+                            ),
+                          ),
+                          Text('%',
+                            style: TextStyle(
+                              fontSize: 9, fontWeight: FontWeight.w600,
+                              color: confColor.withValues(alpha: 0.7),
+                            )),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.lg),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        session.organizationName,
+                        style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4, height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          if (session.stakeholderRole != null) session.stakeholderRole!,
+                          if (session.meetingObjective != null) session.meetingObjective!,
+                        ].join(' · '),
+                        maxLines: 2, overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      _StatusBadge(status: session.status),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Divider
+          Divider(height: 1, color: isDark ? AppColors.outlineDark : AppColors.outline),
+
+          // Stats strip
+          Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+            child: Row(
+              children: [
+                _StatChip(
+                  value: '${session.agentRuns.length}',
+                  label: 'Agents',
+                  icon: Icons.smart_toy_outlined,
+                  color: AppColors.brand,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                _StatChip(
+                  value: '${session.traces.length}',
+                  label: 'Traces',
+                  icon: Icons.account_tree_outlined,
+                  color: AppColors.accent,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                _StatChip(
+                  value: '${(totalMs / 1000).toStringAsFixed(1)}s',
+                  label: 'Runtime',
+                  icon: Icons.timer_outlined,
+                  color: AppColors.textMuted,
+                ),
+              ],
+            ),
+          ),
+
+          // Agent confidence bars
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Column(
+              children: session.agentRuns.take(4).map((run) {
+                final c = run.confidenceScore;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 7),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 76,
+                        child: Text(run.displayName,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.w500,
+                                color: AppColors.textMuted)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: AppSpacing.roundedPill,
+                          child: LinearProgressIndicator(
+                            value: c, minHeight: 5,
+                            backgroundColor:
+                                AppColors.forConfidence(c).withValues(alpha: 0.12),
+                            valueColor: AlwaysStoppedAnimation(
+                                AppColors.forConfidence(c)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('${(c * 100).toStringAsFixed(0)}%',
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w700,
+                              color: AppColors.forConfidence(c))),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          if (session.agentRuns.length > 4)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+              child: Text('+ ${session.agentRuns.length - 4} more agents',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.textMuted)),
+            ),
+
+          // Action buttons
+          Padding(
+            padding: AppSpacing.cardPaddingLg.copyWith(top: AppSpacing.md),
+            child: Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.pushNamed(
+                        context, Routes.trace, arguments: session),
+                    icon: const Icon(Icons.account_tree_outlined, size: 15),
+                    label: const Text('View Trace'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.smMd),
+                      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.pushNamed(
+                        context, Routes.report, arguments: session),
+                    icon: const Icon(Icons.article_outlined, size: 15),
+                    label: const Text('Full Report'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.smMd),
+                      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
               ],
@@ -1316,63 +1397,203 @@ class _AgentStatsCard extends StatelessWidget {
   }
 }
 
-// ── Feature row ───────────────────────────────────────────────────────────────
-
-class _FeatureRow extends StatelessWidget {
-  const _FeatureRow();
+class _CompactSessionCard extends StatelessWidget {
+  final SessionResponse session;
+  final int delay;
+  const _CompactSessionCard({required this.session, this.delay = 0});
 
   @override
   Widget build(BuildContext context) {
-    const features = [
-      _FeatureData(
-        icon: Icons.account_tree_outlined,
-        color: AppColors.accent,
-        surface: AppColors.accentSubtle,
-        title: 'Agent Trace View',
-        body:
-            'Every influence link is recorded and visualised — see exactly which agent shaped which output and why.',
-      ),
-      _FeatureData(
-        icon: Icons.fact_check_outlined,
-        color: AppColors.warning,
-        surface: AppColors.warningLight,
-        title: 'Critic Validation',
-        body:
-            'CriticValidatorAgent reviews all prior outputs, flags unsupported claims, and feeds corrections to FinalSynthesis.',
-      ),
-      _FeatureData(
-        icon: Icons.summarize_outlined,
-        color: AppColors.success,
-        surface: AppColors.successLight,
-        title: 'Final Meeting Brief',
-        body:
-            'A complete, validated meeting strategy: conversation flow, objection playbook, strategic questions, and next steps.',
-      ),
-    ];
+    final avgConf = session.agentRuns.isEmpty
+        ? 0.0
+        : session.agentRuns.map((r) => r.confidenceScore).reduce((a, b) => a + b) /
+            session.agentRuns.length;
+    final confColor = AppColors.forConfidence(avgConf);
 
+    return _FadeIn(
+      delay: Duration(milliseconds: delay),
+      child: Container(
+        decoration: AppTheme.cardDecorationOf(context),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+          leading: Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.brand.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.brand.withValues(alpha: 0.25)),
+            ),
+            child: const Icon(Icons.business_outlined,
+                color: AppColors.brand, size: 18),
+          ),
+          title: Text(session.organizationName,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          subtitle: Text(
+            session.stakeholderRole ?? session.meetingObjective ?? '',
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: confColor.withValues(alpha: 0.12),
+                  borderRadius: AppSpacing.roundedPill,
+                  border: Border.all(color: confColor.withValues(alpha: 0.30)),
+                ),
+                child: Text('${(avgConf * 100).toStringAsFixed(0)}%',
+                    style: TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w700,
+                        color: confColor)),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward_ios_rounded, size: 13),
+                onPressed: () => Navigator.pushNamed(
+                    context, Routes.trace, arguments: session),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Empty state
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onNewMeeting;
+  const _EmptyState({required this.onNewMeeting});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.xxxl),
+      decoration: BoxDecoration(
+        gradient: isDark ? AppColors.darkSurfaceGradient : AppColors.surfaceGradient,
+        borderRadius: AppSpacing.roundedXl,
+        border: Border.all(
+          color: isDark ? AppColors.outlineDark : AppColors.brandSubtle,
+        ),
+      ),
+      child: Column(
+        children: [
+          // Icon with glow ring
+          Container(
+            width: 80, height: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brand.withValues(alpha: 0.10),
+              border: Border.all(
+                  color: AppColors.brand.withValues(alpha: 0.25), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.brand.withValues(alpha: 0.15),
+                  blurRadius: 24,
+                  spreadRadius: -2,
+                ),
+              ],
+            ),
+            child: const Icon(Icons.auto_awesome,
+                color: AppColors.brand, size: 32),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Text(
+            'Ready to Transform Your Next Meeting?',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            child: Text(
+              'Six specialized agents will research your prospect, build stakeholder personas, predict objections, and synthesize a complete meeting strategy.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          _GradientButton(
+            onPressed: onNewMeeting,
+            icon: Icons.auto_awesome,
+            label: 'New Meeting Intelligence',
+            fontSize: 14,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Feature section
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FeatureSection extends StatelessWidget {
+  const _FeatureSection();
+
+  static const _features = [
+    _FeatureData(
+      icon: Icons.account_tree_outlined,
+      color: AppColors.accent,
+      title: 'Agent Trace View',
+      body: 'Every influence link is recorded — see exactly which agent shaped which output and why. The key differentiator for the hackathon judges.',
+    ),
+    _FeatureData(
+      icon: Icons.fact_check_outlined,
+      color: AppColors.warning,
+      title: 'Critic Validation',
+      body: 'CriticValidatorAgent reviews all prior outputs, flags unsupported claims, and feeds verified corrections directly to FinalSynthesis.',
+    ),
+    _FeatureData(
+      icon: Icons.summarize_outlined,
+      color: AppColors.teal,
+      title: 'Final Intelligence Brief',
+      body: 'A complete, validated meeting strategy: conversation flow, objection playbook, strategic questions, and concrete next steps.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
     final isMobile = Responsive.isMobile(context);
 
-    if (isMobile) {
-      return Column(
-        children: features
-            .map((f) => Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                  child: _FeatureCard(data: f),
-                ))
-            .toList(),
-      );
-    }
-
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: features
-          .map((f) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.md),
-                  child: _FeatureCard(data: f),
-                ),
-              ))
-          .toList(),
+      children: [
+        Text('WHY MEETWISE', style: AppTheme.overlineStyle),
+        const SizedBox(height: 6),
+        Text('Built to win the Agent Trace View criteria',
+            style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: AppSpacing.lg),
+        if (isMobile)
+          Column(
+            children: _features.map((f) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: _FeatureCard(data: f),
+            )).toList(),
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _features.asMap().entries.map((e) => Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                    right: e.key < _features.length - 1 ? AppSpacing.md : 0),
+                child: _FeatureCard(data: e.value),
+              ),
+            )).toList(),
+          ),
+      ],
     );
   }
 }
@@ -1380,22 +1601,16 @@ class _FeatureRow extends StatelessWidget {
 class _FeatureData {
   final IconData icon;
   final Color color;
-  final Color surface;
   final String title;
   final String body;
-
   const _FeatureData({
-    required this.icon,
-    required this.color,
-    required this.surface,
-    required this.title,
-    required this.body,
+    required this.icon, required this.color,
+    required this.title, required this.body,
   });
 }
 
 class _FeatureCard extends StatelessWidget {
   final _FeatureData data;
-
   const _FeatureCard({required this.data});
 
   @override
@@ -1407,244 +1622,104 @@ class _FeatureCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 44, height: 44,
             decoration: BoxDecoration(
-              color: data.surface,
+              color: data.color.withValues(alpha: 0.12),
               borderRadius: AppSpacing.roundedMd,
+              border: Border.all(color: data.color.withValues(alpha: 0.25)),
             ),
             child: Icon(data.icon, color: data.color, size: 20),
           ),
-          AppSpacing.gapMd,
-          Text(
-            data.title,
-            style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary),
-          ),
-          AppSpacing.gapXs,
-          Text(
-            data.body,
-            style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-                height: 1.5),
-          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(data.title,
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2)),
+          const SizedBox(height: AppSpacing.xs),
+          Text(data.body,
+              style: TextStyle(
+                  fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.55)),
         ],
       ),
     );
   }
 }
 
-// ── Small reusable widgets ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Small utility widgets
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
   final String status;
-
   const _StatusBadge({required this.status});
 
   @override
   Widget build(BuildContext context) {
-    final isCompleted = status == 'COMPLETED';
-    final fg = isCompleted ? AppColors.success : AppColors.warning;
-    final bg = isCompleted ? AppColors.successLight : AppColors.warningLight;
+    final done = status == 'COMPLETED';
+    final fg = done ? AppColors.success : AppColors.warning;
 
     return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: bg,
+        color: fg.withValues(alpha: 0.12),
         borderRadius: AppSpacing.roundedPill,
+        border: Border.all(color: fg.withValues(alpha: 0.30)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          Text(
-            status,
-            style:
-                TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700),
-          ),
+          Container(width: 5, height: 5,
+              decoration: BoxDecoration(color: fg, shape: BoxShape.circle)),
+          const SizedBox(width: 5),
+          Text(status,
+              style: TextStyle(
+                  color: fg, fontSize: 10, fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2)),
         ],
       ),
     );
   }
 }
 
-class _MetricTile extends StatelessWidget {
+class _StatChip extends StatelessWidget {
   final String value;
   final String label;
+  final IconData icon;
   final Color color;
-
-  const _MetricTile(
-      {required this.value, required this.label, required this.color});
+  const _StatChip({
+    required this.value, required this.label,
+    required this.icon, required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: AppSpacing.roundedMd,
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(value,
-              style: TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w800, color: color)),
-          const SizedBox(height: 2),
-          Text(label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 10,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w500)),
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(value,
+                  style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w800, color: color, height: 1.0)),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 9, fontWeight: FontWeight.w600,
+                      color: color.withValues(alpha: 0.60), letterSpacing: 0.2)),
+            ],
+          ),
         ],
       ),
-    );
-  }
-}
-
-// ── Auth user menu (shown in AppBar when logged in) ───────────────────────────
-
-class _UserMenu extends StatelessWidget {
-  final AuthService auth;
-  const _UserMenu({required this.auth});
-
-  @override
-  Widget build(BuildContext context) {
-    final name = auth.currentUser?.name ?? 'Account';
-    return PopupMenuButton<String>(
-      tooltip: name,
-      offset: const Offset(0, 44),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircleAvatar(
-              radius: 14,
-              backgroundColor: AppColors.brandSubtle,
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : 'U',
-                style: const TextStyle(
-                  color: AppColors.brand,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              name,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const Icon(Icons.arrow_drop_down_rounded,
-                size: 18, color: AppColors.textSecondary),
-          ],
-        ),
-      ),
-      onSelected: (value) async {
-        if (value == 'history') {
-          Navigator.pushNamed(context, Routes.pastMeetings);
-        } else if (value == 'logout') {
-          await auth.logout();
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Signed out successfully')),
-            );
-          }
-        }
-      },
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          enabled: false,
-          child: Text(
-            auth.currentUser?.email ?? '',
-            style: const TextStyle(
-                fontSize: 12, color: AppColors.textMuted),
-          ),
-        ),
-        const PopupMenuDivider(),
-        const PopupMenuItem(
-          value: 'history',
-          child: Row(
-            children: [
-              Icon(Icons.history_rounded, size: 16, color: AppColors.brand),
-              SizedBox(width: 10),
-              Text('My Past Meetings'),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'logout',
-          child: Row(
-            children: [
-              Icon(Icons.logout_rounded, size: 16, color: AppColors.danger),
-              SizedBox(width: 10),
-              Text('Sign Out',
-                  style: TextStyle(color: AppColors.danger)),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Agent confidence row ──────────────────────────────────────────────────────
-
-class _AgentConfidenceRow extends StatelessWidget {
-  final AgentRun run;
-
-  const _AgentConfidenceRow({required this.run});
-
-  @override
-  Widget build(BuildContext context) {
-    final conf = run.confidenceScore;
-    return Row(
-      children: [
-        SizedBox(
-          width: 90,
-          child: Text(
-            run.displayName,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w500),
-          ),
-        ),
-        AppSpacing.hGapSm,
-        Expanded(
-          child: ClipRRect(
-            borderRadius: AppSpacing.roundedPill,
-            child: LinearProgressIndicator(
-              value: conf,
-              minHeight: 6,
-              backgroundColor: AppColors.outline,
-              valueColor: AlwaysStoppedAnimation(AppColors.forConfidence(conf)),
-            ),
-          ),
-        ),
-        AppSpacing.hGapSm,
-        SizedBox(
-          width: 36,
-          child: Text(
-            '${(conf * 100).toStringAsFixed(0)}%',
-            textAlign: TextAlign.right,
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppColors.forConfidence(conf)),
-          ),
-        ),
-      ],
     );
   }
 }
