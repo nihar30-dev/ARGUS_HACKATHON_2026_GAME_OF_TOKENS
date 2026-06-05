@@ -5,13 +5,14 @@ import com.argusoft.meetwise.agent.AgentResult;
 import com.argusoft.meetwise.agent.BaseAgent;
 import com.argusoft.meetwise.agent.core.AgentType;
 import com.argusoft.meetwise.service.FallbackDataService;
-import com.argusoft.meetwise.service.GeminiService;
+import com.argusoft.meetwise.service.LlmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Gemini-based agent (order 7).
@@ -28,7 +29,7 @@ import java.util.List;
 @Slf4j
 public class FinalSynthesisAgent extends BaseAgent {
 
-    private final GeminiService geminiService;
+    private final LlmService llmService;
     private final FallbackDataService fallbackDataService;
 
     @Value("${app.demo-mode:false}")
@@ -57,7 +58,7 @@ public class FinalSynthesisAgent extends BaseAgent {
             outputJson = fallbackDataService.loadFallback(getName());
         } else {
             try {
-                String raw = geminiService.generate(buildPrompt(context));
+                String raw = llmService.generate(buildPrompt(context));
                 if (isValidJson(raw)) {
                     outputJson = raw;
                     usedGemini = true;
@@ -84,63 +85,81 @@ public class FinalSynthesisAgent extends BaseAgent {
     }
 
     private String buildPrompt(AgentContext context) {
+        // Extract only the key fields from each agent to keep the prompt within token limits.
+        // Full JSONs from 6 agents can exceed 3000+ tokens; summaries keep it under 1200.
+        String orgSummary      = extractField(context, "OrganizationResearchAgent",
+                                     "organization_summary", "industry_context", "possible_pain_points");
+        String personaSummary  = extractField(context, "StakeholderPersonaAgent",
+                                     "stakeholder_role", "decision_lens", "communication_style", "what_to_emphasize");
+        String strategyGoal    = extractField(context, "EngagementStrategyAgent",
+                                     "meeting_goal", "value_proposition", "key_messages");
+        String objectionList   = extractField(context, "ObjectionPredictionAgent",
+                                     "objections", "red_flags");
+        String criticIssues    = extractField(context, "CriticValidatorAgent",
+                                     "weak_assumptions", "contradictions", "recommended_revisions", "readiness_score");
+        String refinedStrategy = extractField(context, "StrategyRefinementAgent",
+                                     "revised_positioning", "revised_value_proposition",
+                                     "revised_key_messages", "changes_made");
+
         return """
-                You are a senior business consultant. SYNTHESISE (do not regenerate) a complete meeting
-                preparation package from the six specialist agents below.
+                You are a senior business consultant. Synthesise a meeting preparation package.
+                Use ONLY the data below — do not invent content.
 
-                You MUST reference which recommendations changed due to objections, critic validation,
-                and strategy refinement. Do NOT invent new content — only synthesise what the agents produced.
+                ORGANIZATION: %s
+                STAKEHOLDER: %s
+                STRATEGY: %s
+                OBJECTIONS: %s
+                CRITIC FLAGS: %s
+                REFINED STRATEGY (authoritative): %s
 
-                1. Organization Research:
-                %s
-
-                2. Stakeholder Persona:
-                %s
-
-                3. Initial Engagement Strategy:
-                %s
-
-                4. Objection Predictions:
-                %s
-
-                5. Critic Validation (all issues that were flagged):
-                %s
-
-                6. Refined Strategy (AUTHORITATIVE — this supersedes the initial strategy):
-                %s
-
-                Return raw JSON only (no markdown):
+                Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
                 {
                   "agent": "FinalSynthesisAgent",
-                  "executive_brief": "2-3 sentence summary referencing the refined positioning",
-                  "meeting_objective": "specific goal from refined strategy",
-                  "recommended_positioning": "revised_positioning from StrategyRefinementAgent",
+                  "executive_brief": "2-3 sentence summary using the refined positioning",
+                  "meeting_objective": "specific goal for this meeting",
+                  "recommended_positioning": "from refined strategy",
                   "conversation_flow": [
-                    {"phase": "Opening",           "duration": "5 min",  "approach": "description"},
-                    {"phase": "Discovery",          "duration": "10 min", "approach": "description"},
-                    {"phase": "Demonstration",      "duration": "15 min", "approach": "description"},
-                    {"phase": "Objection Handling", "duration": "10 min", "approach": "description"},
-                    {"phase": "Close",              "duration": "5 min",  "approach": "description"}
+                    {"phase": "Opening",           "duration": "5 min",  "approach": "specific approach"},
+                    {"phase": "Discovery",          "duration": "10 min", "approach": "specific approach"},
+                    {"phase": "Demonstration",      "duration": "15 min", "approach": "specific approach"},
+                    {"phase": "Objection Handling", "duration": "10 min", "approach": "specific approach"},
+                    {"phase": "Close",              "duration": "5 min",  "approach": "specific approach"}
                   ],
                   "questions_to_ask": ["q1", "q2", "q3"],
                   "objections_and_responses": [
                     {"objection": "text", "response": "text", "risk_level": 0.9}
                   ],
-                  "next_steps": ["step1", "step2", "step3"],
-                  "refinements_applied": ["what changed due to critic feedback or objections"],
+                  "next_steps": ["step1", "step2"],
+                  "refinements_applied": ["change1 from critic/objection feedback"],
                   "readiness_score": 0.91,
                   "confidence_score": 0.91,
                   "overallConfidenceScore": 0.91,
-                  "influencedBy": ["OrganizationResearchAgent", "StakeholderPersonaAgent",
-                                   "EngagementStrategyAgent", "ObjectionPredictionAgent",
-                                   "CriticValidatorAgent", "StrategyRefinementAgent"]
+                  "influencedBy": ["OrganizationResearchAgent","StakeholderPersonaAgent",
+                                   "EngagementStrategyAgent","ObjectionPredictionAgent",
+                                   "CriticValidatorAgent","StrategyRefinementAgent"]
                 }
-                """.formatted(
-                getPreviousOutputJson(context, "OrganizationResearchAgent"),
-                getPreviousOutputJson(context, "StakeholderPersonaAgent"),
-                getPreviousOutputJson(context, "EngagementStrategyAgent"),
-                getPreviousOutputJson(context, "ObjectionPredictionAgent"),
-                getPreviousOutputJson(context, "CriticValidatorAgent"),
-                getPreviousOutputJson(context, "StrategyRefinementAgent"));
+                """.formatted(orgSummary, personaSummary, strategyGoal,
+                              objectionList, criticIssues, refinedStrategy);
+    }
+
+    /**
+     * Extracts only the specified keys from a prior agent's JSON output.
+     * Keeps the prompt compact so the response fits within 2048 output tokens.
+     */
+    private String extractField(AgentContext context, String agentName, String... keys) {
+        Map<String, Object> output = getPreviousOutput(context, agentName);
+        if (output.isEmpty()) return "(no data)";
+        StringBuilder sb = new StringBuilder("{");
+        for (String key : keys) {
+            Object val = output.get(key);
+            if (val != null) {
+                try {
+                    sb.append("\"").append(key).append("\":").append(objectMapper.writeValueAsString(val)).append(",");
+                } catch (Exception ignored) {}
+            }
+        }
+        if (sb.charAt(sb.length() - 1) == ',') sb.setLength(sb.length() - 1);
+        sb.append("}");
+        return sb.toString();
     }
 }

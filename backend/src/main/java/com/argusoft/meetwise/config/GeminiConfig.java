@@ -17,4 +17,12 @@ public class GeminiConfig {
                 .setReadTimeout(Duration.ofSeconds(30))
                 .build();
     }
+
+    @Bean
+    public RestTemplate claudeRestTemplate(RestTemplateBuilder builder) {
+        return builder
+                .setConnectTimeout(Duration.ofSeconds(10))
+                .setReadTimeout(Duration.ofSeconds(60))
+                .build();
+    }
 }

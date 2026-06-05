@@ -206,6 +206,28 @@ public abstract class BaseAgent implements Agent {
         }
     }
 
+    /**
+     * Extracts only the specified keys from a prior agent's output as a compact JSON string.
+     * Use this instead of passing full raw JSONs in prompts — keeps prompts small so
+     * Gemini responses fit within the token limit and don't get truncated.
+     */
+    protected String compactSummary(AgentContext context, String agentName, String... keys) {
+        Map<String, Object> output = getPreviousOutput(context, agentName);
+        if (output.isEmpty()) return "{}";
+        StringBuilder sb = new StringBuilder("{");
+        for (String key : keys) {
+            Object val = output.get(key);
+            if (val != null) {
+                try {
+                    sb.append("\"").append(key).append("\":")
+                      .append(objectMapper.writeValueAsString(val)).append(",");
+                } catch (Exception ignored) {}
+            }
+        }
+        if (sb.length() > 1 && sb.charAt(sb.length() - 1) == ',') sb.setLength(sb.length() - 1);
+        return sb.append("}").toString();
+    }
+
     // -----------------------------------------------------------------------
     // Private utilities
     // -----------------------------------------------------------------------

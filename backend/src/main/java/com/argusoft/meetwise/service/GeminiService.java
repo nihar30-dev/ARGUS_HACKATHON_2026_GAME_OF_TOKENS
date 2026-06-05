@@ -72,36 +72,57 @@ public class GeminiService {
             List<?> parts = (List<?>) content.get("parts");
             Map<?, ?> part = (Map<?, ?>) parts.get(0);
             String text = (String) part.get("text");
-            return stripMarkdownFences(text);
+            return cleanJsonResponse(text);
         } catch (Exception e) {
             throw new MeetwiseException("Failed to parse Gemini response", e);
         }
     }
 
     /**
-     * Gemini 2.5 Flash sometimes wraps JSON in ```json ... ``` even when
-     * responseMimeType=application/json is requested. Strip fences and extract
-     * the outermost JSON object so downstream isValidJson() checks pass.
+     * Cleans Gemini output to guarantee a valid JSON string is returned.
+     *
+     * Strategy (in order):
+     *   1. Strip markdown code fences (```json ... ``` or ``` ... ```)
+     *   2. Use depth-tracking to extract the outermost complete JSON object.
+     *      This correctly handles truncated responses where lastIndexOf('}')
+     *      would otherwise land on a nested closing brace instead of the root one.
+     *   3. If still no valid outermost object is found, return the trimmed text
+     *      and let the caller decide whether to fall back.
      */
-    private String stripMarkdownFences(String text) {
+    private String cleanJsonResponse(String text) {
         if (text == null) return null;
         String t = text.trim();
-        // Strip ```json ... ``` or ``` ... ``` wrappers
+
+        // Step 1 — strip markdown fences
         if (t.startsWith("```")) {
             int firstNewline = t.indexOf('\n');
-            if (firstNewline != -1) {
-                t = t.substring(firstNewline + 1);
-            }
-            if (t.endsWith("```")) {
-                t = t.substring(0, t.lastIndexOf("```")).trim();
-            }
+            if (firstNewline != -1) t = t.substring(firstNewline + 1).trim();
+            if (t.endsWith("```")) t = t.substring(0, t.lastIndexOf("```")).trim();
         }
-        // Extract from first { to last } as a safety net
+
+        // Step 2 — depth-tracking extraction of the outermost { ... }
         int start = t.indexOf('{');
-        int end   = t.lastIndexOf('}');
-        if (start != -1 && end != -1 && end > start) {
-            t = t.substring(start, end + 1);
+        if (start != -1) {
+            int depth = 0;
+            boolean inString = false;
+            boolean escape = false;
+            for (int i = start; i < t.length(); i++) {
+                char c = t.charAt(i);
+                if (escape) { escape = false; continue; }
+                if (c == '\\' && inString) { escape = true; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+                if (c == '{') depth++;
+                else if (c == '}') {
+                    depth--;
+                    if (depth == 0) {
+                        return t.substring(start, i + 1);
+                    }
+                }
+            }
         }
+
+        // Step 3 — return as-is and let isValidJson() handle it
         return t;
     }
 }

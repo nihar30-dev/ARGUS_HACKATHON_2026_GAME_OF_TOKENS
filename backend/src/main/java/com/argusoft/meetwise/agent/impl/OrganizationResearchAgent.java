@@ -5,7 +5,7 @@ import com.argusoft.meetwise.agent.AgentResult;
 import com.argusoft.meetwise.agent.BaseAgent;
 import com.argusoft.meetwise.agent.core.AgentType;
 import com.argusoft.meetwise.service.FallbackDataService;
-import com.argusoft.meetwise.service.GeminiService;
+import com.argusoft.meetwise.service.LlmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,7 +18,7 @@ import java.util.List;
 @Slf4j
 public class OrganizationResearchAgent extends BaseAgent {
 
-    private final GeminiService geminiService;
+    private final LlmService llmService;
     private final FallbackDataService fallbackDataService;
 
     @Value("${app.demo-mode:false}")
@@ -42,7 +42,7 @@ public class OrganizationResearchAgent extends BaseAgent {
             log.info("[{}] Demo mode — loaded fallback JSON", getName());
         } else {
             try {
-                String raw = geminiService.generate(
+                String raw = llmService.generate(
                         buildPrompt(meeting.getOrganizationName(),
                                 meeting.getMeetingObjective(),
                                 meeting.getOfferingDescription()));
@@ -75,18 +75,20 @@ public class OrganizationResearchAgent extends BaseAgent {
         return """
                 You are an expert business intelligence analyst.
                 Analyze the following organization for a meeting preparation context.
+                This could be any industry — adapt your analysis to the actual sector.
 
                 Organization: %s
                 Meeting Objective: %s
                 Our Offering: %s
 
-                Return raw JSON only (no markdown):
+                Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
                 {
                   "agent": "OrganizationResearchAgent",
-                  "organization_summary": "2-3 sentence summary",
-                  "likely_priorities": ["priority1", "priority2", "priority3"],
-                  "digital_health_relevance": "how digital health applies to this org",
-                  "possible_pain_points": ["pain1", "pain2", "pain3"],
+                  "organization_summary": "2-3 sentence summary of this specific organization",
+                  "industry_context": "key industry dynamics that affect this meeting",
+                  "likely_priorities": ["priority1 specific to this org", "priority2", "priority3"],
+                  "possible_pain_points": ["pain point 1 specific to this org/industry", "pain2", "pain3"],
+                  "solution_fit": "how the offering maps to this organization's specific context and needs",
                   "partnership_fit": ["opportunity1", "opportunity2"],
                   "evidence_gaps": ["gap1"],
                   "confidence_score": 0.85,

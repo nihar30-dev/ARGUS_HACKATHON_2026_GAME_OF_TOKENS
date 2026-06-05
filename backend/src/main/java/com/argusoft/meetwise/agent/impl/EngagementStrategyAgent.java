@@ -5,7 +5,7 @@ import com.argusoft.meetwise.agent.AgentResult;
 import com.argusoft.meetwise.agent.BaseAgent;
 import com.argusoft.meetwise.agent.core.AgentType;
 import com.argusoft.meetwise.service.FallbackDataService;
-import com.argusoft.meetwise.service.GeminiService;
+import com.argusoft.meetwise.service.LlmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,7 +23,7 @@ import java.util.List;
 @Slf4j
 public class EngagementStrategyAgent extends BaseAgent {
 
-    private final GeminiService geminiService;
+    private final LlmService llmService;
     private final FallbackDataService fallbackDataService;
 
     @Value("${app.demo-mode:false}")
@@ -35,8 +35,11 @@ public class EngagementStrategyAgent extends BaseAgent {
 
     @Override
     public AgentResult execute(AgentContext context) {
-        String researchJson = getPreviousOutputJson(context, "OrganizationResearchAgent");
-        String personaJson  = getPreviousOutputJson(context, "StakeholderPersonaAgent");
+        // Use compact summaries — passing full JSONs inflates prompt size and causes truncation
+        String researchJson = compactSummary(context, "OrganizationResearchAgent",
+                "organization_summary", "industry_context", "possible_pain_points", "solution_fit");
+        String personaJson  = compactSummary(context, "StakeholderPersonaAgent",
+                "stakeholder_role", "decision_lens", "communication_style", "what_to_emphasize");
         String offering     = context.getMeetingRequest().getOfferingDescription();
 
         addTrace(context, "OrganizationResearchAgent", "INFLUENCE",
@@ -51,7 +54,7 @@ public class EngagementStrategyAgent extends BaseAgent {
             outputJson = fallbackDataService.loadFallback(getName());
         } else {
             try {
-                String raw = geminiService.generate(buildPrompt(researchJson, personaJson, offering));
+                String raw = llmService.generate(buildPrompt(researchJson, personaJson, offering));
                 if (isValidJson(raw)) {
                     outputJson = raw;
                     usedGemini = true;
@@ -91,7 +94,7 @@ public class EngagementStrategyAgent extends BaseAgent {
                 Our Offering:
                 %s
 
-                Return raw JSON only (no markdown):
+                Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
                 {
                   "agent": "EngagementStrategyAgent",
                   "meeting_goal": "specific goal for this meeting",

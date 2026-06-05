@@ -5,7 +5,7 @@ import com.argusoft.meetwise.agent.AgentResult;
 import com.argusoft.meetwise.agent.BaseAgent;
 import com.argusoft.meetwise.agent.core.AgentType;
 import com.argusoft.meetwise.service.FallbackDataService;
-import com.argusoft.meetwise.service.GeminiService;
+import com.argusoft.meetwise.service.LlmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,7 +18,7 @@ import java.util.List;
 @Slf4j
 public class ObjectionPredictionAgent extends BaseAgent {
 
-    private final GeminiService geminiService;
+    private final LlmService llmService;
     private final FallbackDataService fallbackDataService;
 
     @Value("${app.demo-mode:false}")
@@ -30,9 +30,13 @@ public class ObjectionPredictionAgent extends BaseAgent {
 
     @Override
     public AgentResult execute(AgentContext context) {
-        String researchJson = getPreviousOutputJson(context, "OrganizationResearchAgent");
-        String personaJson  = getPreviousOutputJson(context, "StakeholderPersonaAgent");
-        String strategyJson = getPreviousOutputJson(context, "EngagementStrategyAgent");
+        // Use compact summaries — passing full JSONs inflates prompt size and causes truncation
+        String researchJson = compactSummary(context, "OrganizationResearchAgent",
+                "organization_summary", "possible_pain_points", "solution_fit");
+        String personaJson  = compactSummary(context, "StakeholderPersonaAgent",
+                "stakeholder_role", "decision_lens", "communication_style");
+        String strategyJson = compactSummary(context, "EngagementStrategyAgent",
+                "meeting_goal", "value_proposition", "key_messages", "primary_positioning");
 
         addTrace(context, "OrganizationResearchAgent", "INFLUENCE",
                 "ObjectionPredictionAgent used org pain points to anticipate resistance");
@@ -48,7 +52,7 @@ public class ObjectionPredictionAgent extends BaseAgent {
             outputJson = fallbackDataService.loadFallback(getName());
         } else {
             try {
-                String raw = geminiService.generate(buildPrompt(researchJson, personaJson, strategyJson));
+                String raw = llmService.generate(buildPrompt(researchJson, personaJson, strategyJson));
                 if (isValidJson(raw)) {
                     outputJson = raw;
                     usedGemini = true;
@@ -89,7 +93,7 @@ public class ObjectionPredictionAgent extends BaseAgent {
                 Proposed Engagement Strategy:
                 %s
 
-                Return raw JSON only (no markdown):
+                Return ONLY a raw JSON object. Do NOT wrap in markdown or code fences.
                 {
                   "agent": "ObjectionPredictionAgent",
                   "objections": [
