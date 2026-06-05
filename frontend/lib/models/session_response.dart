@@ -65,6 +65,7 @@ class FinalReport {
   final String? conversationFlowJson;
   final String? questionsJson;
   final String? objectionResponsesJson;
+  final String? doAndDontJson;
   final String? nextStepsJson;
   final double overallConfidence;
 
@@ -73,6 +74,7 @@ class FinalReport {
     this.conversationFlowJson,
     this.questionsJson,
     this.objectionResponsesJson,
+    this.doAndDontJson,
     this.nextStepsJson,
     required this.overallConfidence,
   });
@@ -82,6 +84,7 @@ class FinalReport {
         conversationFlowJson: j['conversationFlowJson'] as String?,
         questionsJson: j['questionsJson'] as String?,
         objectionResponsesJson: j['objectionResponsesJson'] as String?,
+        doAndDontJson: j['doAndDontJson'] as String?,
         nextStepsJson: j['nextStepsJson'] as String?,
         overallConfidence: (j['overallConfidence'] as num?)?.toDouble() ?? 0.0,
       );
@@ -90,6 +93,8 @@ class FinalReport {
 class SessionResponse {
   final String sessionId;
   final String organizationName;
+  final String? meetingObjective;
+  final String? stakeholderRole;
   final String status;
   final List<AgentRun> agentRuns;
   final List<AgentTrace> traces;
@@ -98,6 +103,8 @@ class SessionResponse {
   SessionResponse({
     required this.sessionId,
     required this.organizationName,
+    this.meetingObjective,
+    this.stakeholderRole,
     required this.status,
     required this.agentRuns,
     required this.traces,
@@ -107,6 +114,8 @@ class SessionResponse {
   factory SessionResponse.fromJson(Map<String, dynamic> j) => SessionResponse(
         sessionId: j['sessionId'] as String,
         organizationName: j['organizationName'] as String,
+        meetingObjective: j['meetingObjective'] as String?,
+        stakeholderRole: j['stakeholderRole'] as String?,
         status: j['status'] as String,
         agentRuns: (j['agentRuns'] as List<dynamic>? ?? [])
             .map((e) => AgentRun.fromJson(e as Map<String, dynamic>))
